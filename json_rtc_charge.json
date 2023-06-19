@@ -1,0 +1,25 @@
+{
+  "fields": {
+    "bytes": 492306,
+    "duration": 30
+  },
+  "name": "rtc_charge",
+  "tags": {
+    "method": "play",
+    "uid": "1382819880",
+    "type": "audio",
+
+      "appId": "gv7c0bgp3",
+    "group": "normal",
+    "playerId": "6A367E6C2B8B42B5B67098F8A0DE7A60",
+    "roomIId": "gv7c0bgp3:851245-ag0AAJR_TnBhjEQX",
+    "roomId": "gv7c0bgp3:851245",
+    "roomServerIId": "rtc-gdgzh-dls-1-3",
+    "roomServerId": "rtc-gdgzh-dls-1-3",
+    "stateCenterId": "zz448",
+    "time": "1676620125",
+    "trackId": "a_p7QTH6sNSOiwDXu00",
+    "uuid": "nHeoJ98w55so90te_a_p7QTH6sNSOiwDXu00"
+  },
+  "ts": 1676620125653923559
+}

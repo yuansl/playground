@@ -1,0 +1,21 @@
+{
+  "fields": {
+    "bytes": 2467646
+  },
+  "name": "charge",
+  "tags": {
+    "method": "publish",
+    "uid": "1382740180",
+    "type": "rtmp",
+
+    "domain": "pili-publish.claweden.com",
+    "hub": "claweden",
+    "nodeId": "vdn-zjwz-dls-1-16",
+    "remoteIP": "59.61.85.250",
+    "scheme": "rtmp",
+    "streamId": "claweden:claweden/mb22",
+    "transProtocol": "srt",
+    "version": "v1"
+  },
+  "ts": 1675771391463664987
+}

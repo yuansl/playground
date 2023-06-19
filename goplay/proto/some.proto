@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/yuansl/playground/goplay/proto";
+
+service SayHello1 {
+  rpc SayHello(HelloRequest) returns (HelloResponse) {}
+}
+
+service SayHello2 {
+  rpc SayHello(stream HelloRequest) returns (HelloResponse) {}
+}
+
+service SayHello3 {
+  rpc SayHello(HelloRequest) returns (stream HelloResponse) {}
+}
+
+service SayHello4 {
+  rpc SayHello(stream HelloRequest) returns (stream HelloResponse) {}
+}
+
+message HelloRequest{
+  string greeting = 1;
+}
+
+message HelloResponse {
+  string replay = 1;
+}
