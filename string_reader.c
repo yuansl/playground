@@ -14,7 +14,7 @@ struct string_reader {
 	struct reader i_reader;
 };
 
-int read_from_string(struct reader *r, void *buf, size_t size)
+static int read_from_string(struct reader *r, void *buf, size_t size)
 {
 	struct string_reader *sr;
 	ssize_t remain;

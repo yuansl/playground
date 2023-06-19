@@ -19,14 +19,13 @@ struct reader_operations {
 };
 
 struct reader {
+	void *data;
 	const struct reader_operations *r_ops;
 };
 
 typedef struct reader *Reader;
 
 Reader new_string_reader(const char *buf);
-
-int read_from_string(struct reader *r, void *buf, size_t size);
 
 __END_DECLS
 
