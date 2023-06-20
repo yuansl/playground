@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 )
 
 func foo() {
@@ -14,28 +13,22 @@ func foo() {
 }
 
 func main() {
-	for _, _path := range []string{
+	for _, rurl := range []string{
 		`https://www.example.com/path/to/file/你是谁/这是一个目录文件?e=1234567=`,
 		`https://www.example.com/path/to/file/something?e=123`,
+		`https://www.example.com/pictures/secret &and @home.avi?e=123&q=what%20is+the+best+practice%20of+golang`,
 	} {
-		_url, err := url.Parse(_path)
+		_url, err := url.Parse(rurl)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "url.Parse error: %v\n", err)
+			continue
 		}
-		type x url.URL
-		fmt.Printf("_url: %+v\n", (*x)(_url))
+		type alias url.URL
+		fmt.Printf("raw-url=%q, _url: %+v, \n", rurl, (*alias)(_url))
 
 		fmt.Printf("path: %q, escaped: %q, rawpath: %q\n", _url.Path, _url.EscapedPath(), _url.RawPath)
 
 		const upperhex = "0123456789ABCDEF"
-
-		c := '你'
-		fmt.Printf("reflect.TypeOf(c): %v, c=`%#04x`\n", reflect.TypeOf(c), c)
-
-		s := "你"
-		for i := 0; i < len(s); i++ {
-			fmt.Printf("%c in hex: %b%b\n", s[i], upperhex[s[i]>>4], upperhex[s[i]&15])
-		}
 
 		fmt.Println("query:")
 		for k, v := range _url.Query() {
