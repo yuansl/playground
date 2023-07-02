@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"playground/at-2023-06-05-232009/repository"
-	"playground/at-2023-06-05-232009/types"
+	"github.com/yuansl/playground/at-2023-06-05-232009/repository"
+	"github.com/yuansl/playground/at-2023-06-05-232009/types"
 )
 
 var (

@@ -13,8 +13,8 @@ package main
 import (
 	"context"
 
-	"playground/at-2023-06-05-232009/repository"
-	"playground/at-2023-06-05-232009/repository/dbrepository"
+	"github.com/yuansl/playground/at-2023-06-05-232009/repository"
+	"github.com/yuansl/playground/at-2023-06-05-232009/repository/dbrepository"
 )
 
 func run(ctx context.Context, repo repository.Repository) error {

@@ -10,6 +10,15 @@
 
 package main
 
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+)
+
 type RegionPair map[string]string
 
 var ContinentAsRegions = map[string]string{
@@ -26,5 +35,54 @@ func _ContinentAsRegions() RegionPair {
 	}
 }
 
+const multiline = `
+This is a long text
+that spans multiple lines
+and then ends.`
+
+func fatal(v ...any) {
+	fmt.Fprintln(os.Stderr, "fatal error: ", v)
+	os.Exit(1)
+}
+
+type lineReader struct {
+	*bufio.Reader
+	eof bool
+}
+
+func (r *lineReader) Readline() ([]byte, error) {
+	if r.eof {
+		return nil, io.EOF
+	}
+
+	line, err := r.ReadBytes('\n')
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			fatal("r.ReadBytes:", err)
+		}
+
+		if len(line) > 0 {
+			r.eof = true
+			return line, nil
+		}
+	}
+	return line, nil
+}
+
+func NewLineReader(r io.Reader) *lineReader {
+	return &lineReader{Reader: bufio.NewReader(r)}
+}
+
 func main() {
+	for r := NewLineReader(bytes.NewReader([]byte(multiline))); ; {
+		line, err := r.Readline()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				fatal("r.ReadBytes:", err)
+			}
+			break
+		}
+
+		fmt.Printf("line=%q\n", line)
+	}
 }

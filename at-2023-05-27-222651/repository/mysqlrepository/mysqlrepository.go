@@ -8,7 +8,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
-	"playground/at-2023-05-27-222651/repository"
+	"github.com/yuansl/playground/at-2023-05-27-222651/repository"
 )
 
 var ErrDatabase = errors.New("repository.mysql: database fatal")

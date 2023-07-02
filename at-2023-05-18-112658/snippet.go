@@ -12,8 +12,9 @@ package main
 
 import (
 	"fmt"
-	"playground/at-2023-05-18-112658/logger"
 	"reflect"
+
+	"github.com/yuansl/playground/at-2023-05-18-112658/logger"
 )
 
 func print(log logger.Logger) {

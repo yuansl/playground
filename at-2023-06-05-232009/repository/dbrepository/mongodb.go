@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"playground/at-2023-06-05-232009/types"
+	"github.com/yuansl/playground/at-2023-06-05-232009/types"
 )
 
 type mongodb struct {

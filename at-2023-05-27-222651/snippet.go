@@ -20,8 +20,8 @@ import (
 	"runtime"
 	"sync"
 
-	"playground/at-2023-05-27-222651/repository"
-	"playground/at-2023-05-27-222651/repository/mysqlrepository"
+	"github.com/yuansl/playground/at-2023-05-27-222651/repository"
+	"github.com/yuansl/playground/at-2023-05-27-222651/repository/mysqlrepository"
 )
 
 const _BLOCK_SIZE = 1 << 20
