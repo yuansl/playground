@@ -7,6 +7,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -299,34 +301,28 @@ func parseJsonValue(text string, state *State) any {
 	if i >= len(text) {
 		return JsonNull
 	}
+
 	switch text[i] {
 	case '{':
-		state0.stage = InJsonObject
 		value = parseJsonObject(text[i:], &state0)
 	case '}':
 		break
 	case '[':
-		state0.stage = InJsonArray
 		value = parseJsonArray(text[i:], &state0)
 	case ']':
 		break
 	case '"':
-		state0.stage = InJsonString
 		value = parseJsonString(text[i:], &state0)
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'e', '+', '-', 'E':
-		state0.stage = InJsonNumber
 		value = parseJsonNumber(text[i:], &state0)
 	case 't', 'f':
-		state0.stage = InJsonBool
 		value = parseJsonBool(text[i:], &state0)
 	case 'n':
-		state0.stage = InJsonNull
 		value = parseJsonNull(text[i:], &state0)
 	default:
 		panic("BUG: json_value: unexpected input:" + text[i:])
 	}
-	i += state0.pos
-	state.pos += i
+	state.pos += i + state0.pos
 	return value
 }
 
@@ -366,7 +362,6 @@ func parseJsonKeyValues(text string, state *State) []keyValue {
 		default:
 			panic("BUG: json_key_values: unexpected input:" + text[i:])
 		}
-		fmt.Printf("key=`%s`, i=%d, pos=%d, text=`%s`\n", key, i, state0.pos, text[i:])
 		i += state0.pos
 	}
 end:
@@ -417,20 +412,20 @@ func parseJson(text string) any {
 func main() {
 	rawjson := `{"name": "lio", "age": 26, "female": false, "extra": null, "points": [1,2,3,4,{"attr": "address", "location": "beijing"}, null, null, null]}`
 
-	// fp, err := os.Open("/home/yuansl/.cache/mintinstall/reviews.json")
-	// if err != nil {
-	// 	fatal("os.Open error:", err)
-	// }
-	// defer fp.Close()
+	fp, err := os.Open("/home/yuansl/.cache/mintinstall/reviews.json")
+	if err != nil {
+		fatal("os.Open error:", err)
+	}
+	defer fp.Close()
 
-	// data, err := io.ReadAll(io.LimitReader(fp, 30<<20))
-	// if err != nil {
-	// 	fatal("io.ReadAll error:", err)
-	// }
+	data, err := io.ReadAll(io.LimitReader(fp, 30<<20))
+	if err != nil {
+		fatal("io.ReadAll error:", err)
+	}
 
-	fmt.Printf("Parsing json raw: `%s`\n", rawjson)
+	// fmt.Printf("Parsing json raw: `%s`\n", rawjson)
 
-	s := parseJson(string(rawjson))
+	s := parseJson(string(data))
 
 	fmt.Printf("parsing json R('%s') :\ns='%v'\n", rawjson, s)
 }

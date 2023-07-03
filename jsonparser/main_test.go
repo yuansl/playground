@@ -22,6 +22,14 @@ func Test_parseJson(t *testing.T) {
 			},
 		},
 		{
+			name:     `test case for parsJsonString`,
+			input:    `"lio"`,
+			expected: `lio`,
+			exec: func(input any) any {
+				return parseJsonString(input.(string), &State{})
+			},
+		},
+		{
 			name:     `test case for parsJsonNumber`,
 			input:    `1e+43, 443`,
 			expected: 1e+43,
