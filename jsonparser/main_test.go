@@ -15,8 +15,8 @@ func Test_parseJson(t *testing.T) {
 	}{
 		{
 			name:     `test case for parsJsonString`,
-			input:    "\"hello world \"'",
-			expected: `"hello world "'`,
+			input:    `"\"hello world \"'some"`,
+			expected: `"hello world "'some`,
 			exec: func(input any) any {
 				return parseJsonString(input.(string), &State{})
 			},
