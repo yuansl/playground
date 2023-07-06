@@ -1,4 +1,4 @@
-// -*- mode:go;mode:go-playground -*-
+// -*- mode:go-playground -*-
 // Execute the snippet with:                 Ctl-Return
 // Provide custom arguments to compile with: Alt-Return
 // Other useful commands:
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -40,7 +41,7 @@ type State struct {
 
 var JsonNull any = nil
 
-func parseJsonObject(text string, state *State) any {
+func parseJsonObject(text []byte, state *State) any {
 	if text[0] != '{' {
 		return nil
 	}
@@ -73,7 +74,7 @@ end:
 	return obj
 }
 
-func parseJsonArray(text string, state *State) any {
+func parseJsonArray(text []byte, state *State) any {
 	if text[0] != '[' {
 		return nil
 	}
@@ -88,14 +89,14 @@ func parseJsonArray(text string, state *State) any {
 		}
 		switch text[i] {
 		case '[', ',':
-			state0.pos++
-			v := parseJsonValue(text[i+1:], &state0)
+			i++
+			v := parseJsonValue(text[i:], &state0)
 			jarray = append(jarray, v)
 		case ']':
 			i++
 			goto end
 		default:
-			fatal("json_array: unexpected input:", text[i:])
+			panic("BUG: json_array: unexpected input:" + string(text[i:]))
 		}
 		i += state0.pos
 	}
@@ -104,10 +105,12 @@ end:
 	return jarray
 }
 
-func parseJsonQuoteString(text string, state *State) string {
+func parseJsonQuoteString(text []byte, state *State) string {
 	if state.stage != InJsonQuoteString {
 		return ""
 	}
+
+	// fmt.Printf("parsing json quoted string: `%s`\n", text)
 
 	var builder strings.Builder
 
@@ -116,6 +119,8 @@ func parseJsonQuoteString(text string, state *State) string {
 	case 'a', 'b', 't', 'v', 'n', '\'', 'f', 'r', 'u', 'x', '0', '1', '2', '3', '4', '5', '6', '7', '"':
 		var c rune
 		switch text[i] {
+		case '\\':
+			c = '\\'
 		case '"':
 			i++
 			builder.WriteString("\"")
@@ -139,17 +144,23 @@ func parseJsonQuoteString(text string, state *State) string {
 		case 'u':
 			if len(text[i+1:]) >= 4 {
 				builder.WriteString("\\u")
-				builder.WriteString(text[i+1 : i+5])
-				i += 4
+				i++
+				for count := 0; i < len(text) && '0' <= text[i] && text[i] <= 'f'; i++ {
+					builder.WriteByte(text[i])
+					count++
+					if count >= 8 {
+						break
+					}
+				}
 				goto end
 			} else {
-				panic("BUG: json_string: invalid unicode literal sequence:" + text[i:])
+				panic("BUG: json_string: invalid unicode literal sequence:" + string(text[i:]))
 			}
 		case 'x':
 			if len(text[i+1:]) >= 2 {
 
 			} else {
-				panic("BUG: json_string: invalid hex literal sequence:" + text[i:])
+				panic("BUG: json_string: invalid hex literal sequence:" + string(text[i:]))
 			}
 		case '0', '1', '2', '3', '4', '5', '6', '7': // TODO
 			switch text[i] {
@@ -159,7 +170,7 @@ func parseJsonQuoteString(text string, state *State) string {
 		builder.WriteRune(c)
 		i++
 	default:
-		panic("BUG: json_string: unexpected json quote string literal:" + text[i:])
+		panic("BUG: json_string: unexpected json quote string literal:" + string(text[i:]))
 	}
 end:
 	state.stage = InJsonString
@@ -167,8 +178,8 @@ end:
 	return builder.String()
 }
 
-func parseJsonString(text string, state *State) string {
-	if text == "" || text[0] != '"' {
+func parseJsonString(text []byte, state *State) string {
+	if len(text) == 0 || text[0] != '"' {
 		fatal("json_string: invalid format:", text)
 	}
 	var builder strings.Builder
@@ -176,6 +187,7 @@ func parseJsonString(text string, state *State) string {
 	for ; i < len(text); i++ {
 		switch text[i] {
 		case '"':
+			// fmt.Printf("parsing json string: '%s'...\n", text[i:i+100])
 			if state.stage == JsonParserStart {
 				state.stage = InJsonString
 			} else if state.stage == InJsonString {
@@ -210,14 +222,14 @@ end:
 	return builder.String()
 }
 
-func parseJsonNumber(text string, state *State) float64 {
+func parseJsonNumber(text []byte, state *State) float64 {
 	var numberPattern strings.Builder
 
 	i := 0
 	for ; i < len(text); i++ {
 		i += skipSpace(text[i:])
 		if i >= len(text) {
-			panic("BUG: json_number: unexpected eof:" + text)
+			panic("BUG: json_number: unexpected eof:" + string(text))
 		}
 		switch text[i] {
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'e', '+', '-', 'E':
@@ -225,7 +237,7 @@ func parseJsonNumber(text string, state *State) float64 {
 		case ',', ']', '}':
 			goto end
 		default:
-			panic("BUG: json_number: unexpected input:" + text[i:])
+			panic("BUG: json_number: unexpected input:" + string(text[i:]))
 		}
 	}
 end:
@@ -237,8 +249,8 @@ end:
 	return value
 }
 
-func parseJsonBool(text string, state *State) bool {
-	if text == "" {
+func parseJsonBool(text []byte, state *State) bool {
+	if len(text) == 0 {
 		fatal("json_string: invalid format:", text)
 	}
 
@@ -250,13 +262,13 @@ func parseJsonBool(text string, state *State) bool {
 	}
 	switch text[i] {
 	case 't':
-		if len(text[i:]) < 4 || text[i:i+4] != "true" {
+		if len(text[i:]) < 4 || string(text[i:i+4]) != "true" {
 			fatal("json_bool: invalid json value 'true':", text)
 		}
 		builder.WriteString("true")
 		i += 4
 	case 'f':
-		if len(text[i:]) < 5 || text[i:i+5] != "false" {
+		if len(text[i:]) < 5 || string(text[i:i+5]) != "false" {
 			fatal("json_bool: invalid json value 'false':", text)
 		}
 		builder.WriteString("false")
@@ -272,8 +284,8 @@ func parseJsonBool(text string, state *State) bool {
 	return false
 }
 
-func parseJsonNull(text string, state *State) any {
-	if text == "" {
+func parseJsonNull(text []byte, state *State) any {
+	if len(text) == 0 {
 		fatal("json_null: invalid input:", text)
 	}
 	i := skipSpace(text)
@@ -282,7 +294,7 @@ func parseJsonNull(text string, state *State) any {
 	}
 	switch text[i] {
 	case 'n':
-		if len(text[i:]) < 4 || text[i:i+4] != "null" {
+		if len(text[i:]) < 4 || string(text[i:i+4]) != "null" {
 			fatal("json_null: invalid json null:", text)
 		}
 		state.pos += i + 4
@@ -293,7 +305,7 @@ func parseJsonNull(text string, state *State) any {
 	return JsonNull
 }
 
-func parseJsonValue(text string, state *State) any {
+func parseJsonValue(text []byte, state *State) any {
 	var value any
 	var state0 State
 
@@ -320,7 +332,7 @@ func parseJsonValue(text string, state *State) any {
 	case 'n':
 		value = parseJsonNull(text[i:], &state0)
 	default:
-		panic("BUG: json_value: unexpected input:" + text[i:])
+		panic("BUG: json_value: unexpected input:" + string(text[i:]))
 	}
 	state.pos += i + state0.pos
 	return value
@@ -331,7 +343,7 @@ type keyValue struct {
 	value any
 }
 
-func parseJsonKeyValues(text string, state *State) []keyValue {
+func parseJsonKeyValues(text []byte, state *State) []keyValue {
 	var kvs []keyValue
 
 	key := ""
@@ -360,7 +372,7 @@ func parseJsonKeyValues(text string, state *State) []keyValue {
 		case ']', '}':
 			goto end
 		default:
-			panic("BUG: json_key_values: unexpected input:" + text[i:])
+			panic("BUG: json_key_values: unexpected input:" + string(text[i:]))
 		}
 		i += state0.pos
 	}
@@ -372,21 +384,17 @@ end:
 	return kvs
 }
 
-func parseJson(text string) any {
-	if text == "" {
+func parseJson(text []byte) any {
+	var value any
+	var state State
+
+	if len(text) == 0 {
 		return nil
 	}
-
 	if text[0] != '{' && text[0] != '[' {
 		return nil
 	}
-
-	var value any
-
-	state := State{stage: JsonParserStart}
-
-	i := 0
-	i += skipSpace(text[i:])
+	i := skipSpace(text)
 	if i >= len(text) {
 		return nil
 	}
@@ -409,23 +417,48 @@ func parseJson(text string) any {
 	return value
 }
 
-func main() {
-	rawjson := `{"name": "lio", "age": 26, "female": false, "extra": null, "points": [1,2,3,4,{"attr": "address", "location": "beijing"}, null, null, null]}`
-
-	fp, err := os.Open("/home/yuansl/.cache/mintinstall/reviews.json")
-	if err != nil {
-		fatal("os.Open error:", err)
-	}
-	defer fp.Close()
-
-	data, err := io.ReadAll(io.LimitReader(fp, 30<<20))
+func jsonDecode(r io.Reader) {
+	data, err := io.ReadAll(io.LimitReader(r, 30<<20))
 	if err != nil {
 		fatal("io.ReadAll error:", err)
 	}
 
 	// fmt.Printf("Parsing json raw: `%s`\n", rawjson)
 
-	s := parseJson(string(data))
+	s := parseJson(data)
 
-	fmt.Printf("parsing json R('%s') :\ns='%v'\n", rawjson, s)
+	fmt.Printf("s='%v'\n", s)
+}
+
+func jsonDecodeString() {
+	rawjson := `{"name": "lio", "age": 26, "female": false, "extra": null, "points": [1,2,3,4,{"attr": "address", "location": "beijing"}, null, null, null, "what are you doing man? ", "hello", "\u0013ffff"]}`
+
+	s := parseJson([]byte(rawjson))
+	fmt.Printf("parsed json: %v\n", s)
+}
+
+const (
+	KiB = 1024
+	MiB = 1024 * KiB
+	GiB = 1024 * MiB
+)
+
+func jsonDecodeFile() {
+	fp, err := os.Open(filepath.Join(os.Getenv("HOME"), ".cache/mintinstall/reviews.json"))
+	if err != nil {
+		fatal("os.Open error:", err)
+	}
+	defer fp.Close()
+
+	data, err := io.ReadAll(io.LimitReader(fp, 30*MiB))
+	if err != nil {
+		fatal("io.ReadAll error:", err)
+	}
+
+	s := parseJson(data)
+	fmt.Printf("parsed json from file: %v\n", s)
+}
+
+func main() {
+	jsonDecodeFile()
 }

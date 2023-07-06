@@ -16,7 +16,7 @@ func fatal(v ...any) {
 	os.Exit(1)
 }
 
-func skipSpace(s string) int {
+func skipSpace(s []byte) int {
 	spaces := 0
 
 	for i := 0; i < len(s) && unicode.IsSpace(rune(s[i])); i++ {
