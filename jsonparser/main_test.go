@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func Test_parseJson(t *testing.T) {
 	// a test case consists of a @name, an @input, an @expected and
@@ -15,42 +21,42 @@ func Test_parseJson(t *testing.T) {
 	}{
 		{
 			name:     `test case for parsJsonString`,
-			input:    `"\"hello world \"'some"`,
+			input:    []byte(`"\"hello world \"'some"`),
 			expected: `"hello world "'some`,
 			exec: func(input any) any {
-				return parseJsonString(input.(string), &State{})
+				return parseJsonString(input.([]byte), &State{})
 			},
 		},
 		{
 			name:     `test case for parsJsonString`,
-			input:    `"lio"`,
+			input:    []byte(`"lio"`),
 			expected: `lio`,
 			exec: func(input any) any {
-				return parseJsonString(input.(string), &State{})
+				return parseJsonString(input.([]byte), &State{})
 			},
 		},
 		{
 			name:     `test case for parsJsonNumber`,
-			input:    `1e+43, 443`,
+			input:    []byte(`1e+43, 443`),
 			expected: 1e+43,
 			exec: func(input any) any {
-				return parseJsonNumber(input.(string), &State{})
+				return parseJsonNumber(input.([]byte), &State{})
 			},
 		},
 		{
 			name:     `test case for parsJsonBool`,
-			input:    `   true,   false`,
+			input:    []byte(`   true,   false`),
 			expected: true,
 			exec: func(input any) any {
-				return parseJsonBool(input.(string), &State{})
+				return parseJsonBool(input.([]byte), &State{})
 			},
 		},
 		{
 			name:     `test case for parsJsonNull`,
-			input:    `   null, `,
+			input:    []byte(`   null, `),
 			expected: nil,
 			exec: func(input any) any {
-				return parseJsonNull(input.(string), &State{})
+				return parseJsonNull(input.([]byte), &State{})
 			},
 		},
 	}
@@ -69,4 +75,25 @@ func Test_parseJson(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Benchmark_parseJson(b *testing.B) {
+	fp, err := os.Open(filepath.Join(os.Getenv("HOME"), ".cache/mintinstall/reviews.json"))
+	if err != nil {
+		fatal("os.Open error:", err)
+	}
+	defer fp.Close()
+
+	data, err := io.ReadAll(io.LimitReader(fp, 30*MiB))
+	if err != nil {
+		fatal("io.ReadAll error:", err)
+	}
+	b.Run("parseJson", func(b *testing.B) {
+		parseJson(data)
+	})
+	b.Run("json.Unmarshal", func(b *testing.B) {
+		var v map[string]any
+
+		json.Unmarshal(data, &v)
+	})
 }

@@ -10,23 +10,18 @@ func _() {
 	var x [1]struct{}
 	_ = x[JsonParserStart-0]
 	_ = x[InJsonString-1]
-	_ = x[OutJsonString-2]
-	_ = x[InJsonQuoteString-3]
-	_ = x[InJsonObject-4]
-	_ = x[OutJsonObject-5]
-	_ = x[InJsonArray-6]
-	_ = x[OutJsonArray-7]
-	_ = x[InJsonNumber-8]
-	_ = x[InJsonBool-9]
-	_ = x[OutJsonBool-10]
-	_ = x[InJsonNull-11]
-	_ = x[OutJsonNull-12]
-	_ = x[JsonParserStop-13]
+	_ = x[InJsonQuoteString-2]
+	_ = x[InJsonObject-3]
+	_ = x[InJsonArray-4]
+	_ = x[InJsonNumber-5]
+	_ = x[InJsonBool-6]
+	_ = x[InJsonNull-7]
+	_ = x[JsonParserStop-8]
 }
 
-const _JsonParserStage_name = "JsonParserStartInJsonStringOutJsonStringInJsonQuoteStringInJsonObjectOutJsonObjectInJsonArrayOutJsonArrayInJsonNumberInJsonBoolOutJsonBoolInJsonNullOutJsonNullJsonParserStop"
+const _JsonParserStage_name = "JsonParserStartInJsonStringInJsonQuoteStringInJsonObjectInJsonArrayInJsonNumberInJsonBoolInJsonNullJsonParserStop"
 
-var _JsonParserStage_index = [...]uint8{0, 15, 27, 40, 57, 69, 82, 93, 105, 117, 127, 138, 148, 159, 173}
+var _JsonParserStage_index = [...]uint8{0, 15, 27, 44, 56, 67, 79, 89, 99, 113}
 
 func (i JsonParserStage) String() string {
 	if i < 0 || i >= JsonParserStage(len(_JsonParserStage_index)-1) {
