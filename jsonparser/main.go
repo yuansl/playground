@@ -1,4 +1,4 @@
-// -*- mode:go-playground -*-
+// -*- mode:go;mode:go-playground -*-
 // Execute the snippet with:                 Ctl-Return
 // Provide custom arguments to compile with: Alt-Return
 // Other useful commands:
