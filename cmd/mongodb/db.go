@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -23,14 +23,6 @@ type Mongodb interface {
 
 type mongodb struct {
 	db *mongo.Collection
-}
-
-func New(mongouri, db, coll string) Mongodb {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongouri))
-	if err != nil {
-		fatal("mongo.Connect error: %v\n", err)
-	}
-	return &mongodb{db: client.Database(db).Collection(coll)}
 }
 
 func (db *mongodb) Find(ctx context.Context, selector any) (Iterator, error) {
@@ -52,6 +44,14 @@ func (db *mongodb) Delete(ctx context.Context, selector any) error {
 func fatal(format string, v ...any) {
 	fmt.Fprintf(os.Stderr, "fatal error: "+format, v...)
 	os.Exit(1)
+}
+
+func New(mongouri, db, coll string) Mongodb {
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongouri))
+	if err != nil {
+		fatal("mongo.Connect error: %v\n", err)
+	}
+	return &mongodb{db: client.Database(db).Collection(coll)}
 }
 
 func main() {
