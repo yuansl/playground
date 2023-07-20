@@ -3,6 +3,9 @@ package stream
 import (
 	"testing"
 	"time"
+
+	"github.com/yuansl/playground/utils"
+	"golang.org/x/exp/constraints"
 )
 
 type DomainCdnTraffic struct {
@@ -18,32 +21,17 @@ type DomainTraffic struct {
 	Points []int
 }
 
-type Set[T comparable] struct {
-	slots []T
-}
-
-func (set *Set[T]) Add(x T) {
-	for _, v := range set.slots {
-		if v == x {
-			return
-		}
+func AddArray[T constraints.Ordered](a, b []T) []T {
+	if len(a) != len(b) {
+		panic("BUG: len(a)!=len(b)")
 	}
-	set.slots = append(set.slots, x)
-}
 
-func (set *Set[T]) Get(index int) (t T) {
-	if index > len(set.slots) {
-		return
+	c := make([]T, len(a))
+
+	for i := 0; i < len(a); i++ {
+		c[i] = a[i] + b[i]
 	}
-	return set.slots[index]
-}
-
-func (set *Set[T]) Size() int {
-	return len(set.slots)
-}
-
-func NewSet[T comparable]() *Set[T] {
-	return &Set[T]{}
+	return c
 }
 
 func TestStream(t *testing.T) {
@@ -72,12 +60,12 @@ func TestStream(t *testing.T) {
 						return []int{v, v + 1}
 					}).
 					Collect(Collector[int, any, []int]{
-						Supplier: func() any { return NewSet[int]() },
+						Supplier: func() any { return utils.NewSet[int]() },
 						BiConsumer: func(z any, x int) {
-							z.(*Set[int]).Add(x)
+							z.(*utils.Set[int]).Add(x)
 						},
 						Function: func(z any) []int {
-							set := z.(*Set[int])
+							set := z.(*utils.Set[int])
 							result := make([]int, 0, set.Size())
 							for i := 0; i < set.Size(); i++ {
 								result = append(result, set.Get(i))
@@ -123,13 +111,13 @@ func TestStream(t *testing.T) {
 						return DomainCdnTraffic{Domain: v.Domain, Day: v.Day, Cdn: v.Cdn, Points: points}
 					}).
 					Collect(Collector[DomainCdnTraffic, any, []DomainTraffic]{
-						Supplier: func() any { return NewSet[*DomainTraffic]() },
+						Supplier: func() any { return utils.NewSet[*DomainTraffic]() },
 						BiConsumer: func(z any, x DomainCdnTraffic) {
-							z.(*Set[*DomainTraffic]).
+							z.(*utils.Set[*DomainTraffic]).
 								Add(&DomainTraffic{Domain: x.Domain, Day: x.Day, Points: x.Points})
 						},
 						Function: func(z any) []DomainTraffic {
-							set := z.(*Set[*DomainTraffic])
+							set := z.(*utils.Set[*DomainTraffic])
 							result := make([]DomainTraffic, 0, set.Size())
 
 							for i := 0; i < set.Size(); i++ {
