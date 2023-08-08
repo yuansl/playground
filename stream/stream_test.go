@@ -90,25 +90,18 @@ func TestStream(t *testing.T) {
 			},
 			expected: nil,
 			exec: func(input any) any {
-				type (
-					Key struct {
-						Domain string
-						Day    time.Time
-					}
-					Value = []int
-				)
 				in := input.([]DomainCdnTraffic)
 				out := NewStream[DomainCdnTraffic, []DomainTraffic](in).
 					Filter(func(v DomainCdnTraffic) bool {
 						return v.Cdn == "baidu"
 					}).
 					Map(func(v DomainCdnTraffic) DomainCdnTraffic {
-						points := make([]int, 0, len(v.Points))
+						for i := 0; i < len(v.Points); i++ {
+							p := &v.Points[i]
 
-						for _, v := range v.Points {
-							points = append(points, v*3)
+							*p *= 3
 						}
-						return DomainCdnTraffic{Domain: v.Domain, Day: v.Day, Cdn: v.Cdn, Points: points}
+						return v
 					}).
 					Collect(Collector[DomainCdnTraffic, any, []DomainTraffic]{
 						Supplier: func() any { return utils.NewSet[*DomainTraffic]() },
@@ -128,11 +121,16 @@ func TestStream(t *testing.T) {
 					})
 				t.Logf("out=%v\n", out)
 
-				s2 := GroupBy[DomainCdnTraffic, DomainTraffic, Key](in,
-					func(v DomainCdnTraffic) Key {
-						return Key{Domain: v.Domain, Day: v.Day}
+				type GroupByKey struct {
+					Domain string
+					Day    time.Time
+				}
+
+				s2 := GroupBy[DomainCdnTraffic, DomainTraffic, GroupByKey](in,
+					func(v DomainCdnTraffic) GroupByKey {
+						return GroupByKey{Domain: v.Domain, Day: v.Day}
 					},
-					func(k Key, values []DomainCdnTraffic) DomainTraffic {
+					func(k GroupByKey, values []DomainCdnTraffic) DomainTraffic {
 						points := []int{}
 
 						for _, value := range values {
@@ -143,25 +141,8 @@ func TestStream(t *testing.T) {
 						}
 						return DomainTraffic{Domain: k.Domain, Day: k.Day, Points: points}
 					},
-				)
+				).Set()
 				t.Logf("s2 = %+v\n", s2)
-
-				// for _, it := range out {
-				// 	if v, ok := it.(GroupV[GroupKey, Value]); ok {
-				// 		switch v.Key.Domain {
-				// 		case "a":
-				// 			if x := v.Values[0][0]; x != 12 {
-				// 				t.Fatalf("mismatch: got %v, but expected 12", x)
-				// 			}
-				// 		case "b":
-				// 			if x := v.Values[0][0]; x != 3 {
-				// 				t.Fatalf("mismatch: got %v, but expected 3", x)
-				// 			}
-				// 		default:
-				// 			panic("BUG: got unknown domain:" + v.Key.Domain)
-				// 		}
-				// 	}
-				// }
 
 				return nil
 			},
