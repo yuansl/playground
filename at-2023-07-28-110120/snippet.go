@@ -11,8 +11,10 @@
 package main
 
 import (
+	"cmp"
 	"io"
 	"os"
+	"reflect"
 	"sync"
 
 	"golang.org/x/exp/constraints"
@@ -32,7 +34,9 @@ func Write(w MyWriter) {
 	w.Write(nil)
 }
 
-type PrintableMutext struct{ sync.Mutex }
+type PrintableMutext struct {
+	sync.Mutex
+}
 
 func pretty(x *PrintableMutext) {
 	x.Lock()
@@ -69,10 +73,11 @@ func WriteAny[T any](w UniverseWriter[T], v T) {
 }
 
 func ExampleInferFromInterfaceMethod() {
+	reflect.TypeOf(nil)
 	WriteAny((*os.File)(nil), []byte("some")) // inferred UniverseWriter[[]byte] as Writer.Write([]byte)(int,error)
 }
 
-func sum[E constraints.Ordered](v ...E) E {
+func sum[E cmp.Ordered](v ...E) E {
 	var s E
 	for _, vv := range v {
 		s += vv
