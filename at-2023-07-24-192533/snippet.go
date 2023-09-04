@@ -15,11 +15,13 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-
-	cmp "golang.org/x/exp/constraints"
 )
 
-func Scale[S ~[]E, E cmp.Integer](s S, c E) S {
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+func Scale[S ~[]E, E Integer](s S, c E) S {
 	for i := 0; i < len(s); i++ {
 		s[i] *= c
 	}

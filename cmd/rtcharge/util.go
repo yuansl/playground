@@ -3,25 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
-
-	"golang.org/x/exp/constraints"
+	"runtime"
 )
 
-func max[T constraints.Ordered](a, b T) T {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min[T constraints.Ordered](a, b T) T {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func fatal(v ...any) {
+	pc, file, line, _ := runtime.Caller(1)
+	fn := runtime.FuncForPC(pc)
+
 	fmt.Fprintln(os.Stderr, "fatal error: ", v)
+	fmt.Fprintf(os.Stderr, "%s:\n\t%s:%d\n", fn.Name(), file, line)
 	os.Exit(1)
 }

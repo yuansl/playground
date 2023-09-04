@@ -1,11 +1,11 @@
 package stream
 
 import (
+	"cmp"
 	"testing"
 	"time"
 
 	"github.com/yuansl/playground/utils"
-	"golang.org/x/exp/constraints"
 )
 
 type DomainCdnTraffic struct {
@@ -21,7 +21,7 @@ type DomainTraffic struct {
 	Points []int
 }
 
-func AddArray[T constraints.Ordered](a, b []T) []T {
+func AddArray[T cmp.Ordered](a, b []T) []T {
 	if len(a) != len(b) {
 		panic("BUG: len(a)!=len(b)")
 	}

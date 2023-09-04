@@ -14,10 +14,7 @@ import (
 	"cmp"
 	"io"
 	"os"
-	"reflect"
 	"sync"
-
-	"golang.org/x/exp/constraints"
 )
 
 type Some[T any] struct {
@@ -56,7 +53,9 @@ func IndexFunc[S ~[]E, E any](s S, predicate func(E) bool) int {
 	return -1
 }
 
-func Predicate[E constraints.Integer](v E) bool {
+type Integer interface{ ~int | ~uint }
+
+func Predicate[E Integer](v E) bool {
 	return v%2 == 0
 }
 
@@ -73,7 +72,6 @@ func WriteAny[T any](w UniverseWriter[T], v T) {
 }
 
 func ExampleInferFromInterfaceMethod() {
-	reflect.TypeOf(nil)
 	WriteAny((*os.File)(nil), []byte("some")) // inferred UniverseWriter[[]byte] as Writer.Write([]byte)(int,error)
 }
 
@@ -91,9 +89,9 @@ func ExampleInferUntypedConstant() {
 
 func ExampleComponents[T any]([]T) {}
 
-type Setter2[P1 any] interface {
+type Setter2[T any] interface {
 	Set(string)
-	*P1
+	*T
 }
 
 func FromStrings2[P2 any, P3 Setter2[P2]]([]string) []P2 {
@@ -114,6 +112,7 @@ func foo2[K interface {
 }]() {
 }
 
+// see https://go.dev/ref/spec#Type_inference
 func main() {
 	ExampleComponents([]int{})
 
