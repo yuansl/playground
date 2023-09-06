@@ -58,7 +58,7 @@ func (s *Stream[T, R]) Flatmap(mapper func(T) []T) *Stream[T, R] {
 	return NewStream[T, R](result)
 }
 
-func (s *Stream[T, R]) Set() []T {
+func (s *Stream[T, R]) Collect() []T {
 	return s.value
 }
 
@@ -142,24 +142,27 @@ func (s *Stream[R, T]) ReduceByKey(fn func(v1, v2 T) T) *Stream[R, T] {
 	return NewStream[R, T](nil)
 }
 
-type Collector[T, A, R any] struct {
+// T -> (A)intermediate -> R
+type Aggregator[T, A, R any] struct {
 	Supplier       func() A
-	BiConsumer     func(A, T)
+	Transform      func(A, T)
 	BinaryOperator func(A, A) A
-	Function       func(A) R
+	Collect        func(A) R
 }
 
-func (s *Stream[T, R]) Collect(collector Collector[T, any, R]) R {
-	z := collector.Supplier()
+// T - type of the input
+// R - type of the result
+func (s *Stream[T, R]) Aggregate(aggregator Aggregator[T, any, R]) R {
+	z := aggregator.Supplier()
 
 	for _, v := range s.value {
-		collector.BiConsumer(z, v)
+		aggregator.Transform(z, v)
 	}
 	if s.parallel {
-		// FIXME
-		z = collector.BinaryOperator(z, z)
+		panic("TODO: not implemented")
+		// z = collector.BinaryOperator(z, z)
 	}
-	return collector.Function(z)
+	return aggregator.Collect(z)
 }
 
 func NewStream[T, R any](dataset []T) *Stream[T, R] {
@@ -169,7 +172,7 @@ func NewStream[T, R any](dataset []T) *Stream[T, R] {
 // T is the type of inputs
 // R is the type of Outputs
 // K is the group by key
-func GroupBy[T, R any, K comparable](inputs []T, getKey func(v T) K, convert func(K, []T) R) *Stream[R, T] {
+func GroupBy[T, R any, K comparable](inputs []T, getKey func(v T) K, Reduce func(K, []T) R) *Stream[R, T] {
 	var result []R
 	var groupBy = make(map[K][]T)
 
@@ -178,7 +181,7 @@ func GroupBy[T, R any, K comparable](inputs []T, getKey func(v T) K, convert fun
 		groupBy[key] = append(groupBy[key], v)
 	}
 	for k, v := range groupBy {
-		result = append(result, convert(k, v))
+		result = append(result, Reduce(k, v))
 	}
 	return NewStream[R, T](result)
 }

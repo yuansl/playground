@@ -59,12 +59,12 @@ func TestStream(t *testing.T) {
 					Flatmap(func(v int) []int {
 						return []int{v, v + 1}
 					}).
-					Collect(Collector[int, any, []int]{
+					Aggregate(Aggregator[int, any, []int]{
 						Supplier: func() any { return utils.NewSet[int]() },
-						BiConsumer: func(z any, x int) {
+						Transform: func(z any, x int) {
 							z.(*utils.Set[int]).Add(x)
 						},
-						Function: func(z any) []int {
+						Collect: func(z any) []int {
 							set := z.(*utils.Set[int])
 							result := make([]int, 0, set.Size())
 							for i := 0; i < set.Size(); i++ {
@@ -103,13 +103,13 @@ func TestStream(t *testing.T) {
 						}
 						return v
 					}).
-					Collect(Collector[DomainCdnTraffic, any, []DomainTraffic]{
+					Aggregate(Aggregator[DomainCdnTraffic, any, []DomainTraffic]{
 						Supplier: func() any { return utils.NewSet[*DomainTraffic]() },
-						BiConsumer: func(z any, x DomainCdnTraffic) {
+						Transform: func(z any, x DomainCdnTraffic) {
 							z.(*utils.Set[*DomainTraffic]).
 								Add(&DomainTraffic{Domain: x.Domain, Day: x.Day, Points: x.Points})
 						},
-						Function: func(z any) []DomainTraffic {
+						Collect: func(z any) []DomainTraffic {
 							set := z.(*utils.Set[*DomainTraffic])
 							result := make([]DomainTraffic, 0, set.Size())
 
@@ -141,7 +141,7 @@ func TestStream(t *testing.T) {
 						}
 						return DomainTraffic{Domain: k.Domain, Day: k.Day, Points: points}
 					},
-				).Set()
+				).Collect()
 				t.Logf("s2 = %+v\n", s2)
 
 				return nil

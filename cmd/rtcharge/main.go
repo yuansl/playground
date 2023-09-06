@@ -50,7 +50,7 @@ func PrettyPrint_UserPlayerRecords(userPlayerRecords []RtcUserPlayerRecords) {
 	}
 }
 
-const _DURATION_SECONDS_DEFAULT = 300
+const _AGG_DURATION_SECONDS_DEFAULT = 300
 
 func accumulate(records []RtcChargeRecord) {
 	// for each record: set record.area = record.width * record.height
@@ -62,30 +62,29 @@ func accumulate(records []RtcChargeRecord) {
 			r.Fields.Area = r.Fields.Width * r.Fields.Height
 			return r
 		}).
-		Set()
+		Collect()
 
-	groupRecords := stream.GroupBy[RtcChargeRecord, RtcChargeGroupRecords, RtcChargeGroupKey](records,
-		func(r RtcChargeRecord) RtcChargeGroupKey {
-			return RtcChargeGroupKey{
-				Uid:      r.Tags.Uid,
-				AppId:    r.Tags.AppId,
-				PlayerId: r.Tags.PlayerId,
-				RoomId:   r.Tags.RoomId,
-				Time:     r.Tags.Time,
-				Method:   r.Tags.Method,
-			}
-		},
-		func(k RtcChargeGroupKey, records []RtcChargeRecord) RtcChargeGroupRecords {
-			return RtcChargeGroupRecords{Key: k, Records: records}
-		}).
-		Set() // [(RtcChargeGroupKey, []RtcChargeRecord)]
-
-	reduceCharges := stream.NewStream[RtcChargeGroupRecords, []RtcGroupReduceCharge](groupRecords).
-		Collect(stream.Collector[RtcChargeGroupRecords, any, []RtcGroupReduceCharge]{
+	reduceCharges := stream.NewStream[RtcChargeGroupRecords, []RtcGroupReduceCharge](
+		stream.GroupBy(records,
+			func(r RtcChargeRecord) RtcChargeGroupKey {
+				return RtcChargeGroupKey{
+					Uid:      r.Tags.Uid,
+					AppId:    r.Tags.AppId,
+					PlayerId: r.Tags.PlayerId,
+					RoomId:   r.Tags.RoomId,
+					Time:     r.Tags.Time,
+					Method:   r.Tags.Method,
+				}
+			},
+			func(k RtcChargeGroupKey, records []RtcChargeRecord) RtcChargeGroupRecords {
+				return RtcChargeGroupRecords{Key: k, Records: records}
+			}).
+			Collect()).
+		Aggregate(stream.Aggregator[RtcChargeGroupRecords, any, []RtcGroupReduceCharge]{
 			Supplier: func() any {
 				return utils.NewSet[*RtcGroupReduceCharge]()
 			},
-			BiConsumer: func(z any, r RtcChargeGroupRecords) {
+			Transform: func(z any, r RtcChargeGroupRecords) {
 				set := z.(*utils.Set[*RtcGroupReduceCharge])
 				charge := RtcGroupReduceCharge{RtcChargeGroupKey: r.Key}
 
@@ -97,7 +96,7 @@ func accumulate(records []RtcChargeRecord) {
 				}
 				set.Add(&charge)
 			},
-			Function: func(z any) []RtcGroupReduceCharge {
+			Collect: func(z any) []RtcGroupReduceCharge {
 				set := z.(*utils.Set[*RtcGroupReduceCharge])
 				reduceCharges := make([]RtcGroupReduceCharge, 0, set.Size())
 
@@ -110,31 +109,28 @@ func accumulate(records []RtcChargeRecord) {
 			},
 		}) // []RtcGroupReduceCharge
 
-	userPlayerRecords := stream.GroupBy[RtcGroupReduceCharge, RtcUserPlayerRecords, RtcUserPlayer](reduceCharges,
-		func(v RtcGroupReduceCharge) RtcUserPlayer {
-			return RtcUserPlayer{
-				Uid:        v.Uid,
-				AppId:      v.AppId,
-				PlayerId:   v.PlayerId,
-				RoomId:     v.RoomId,
-				Resolution: ResolutionTypeOf(v.Area),
-				Method:     v.Method,
-				Time:       v.Time / 300 * 300,
-			}
-		},
-		func(k RtcUserPlayer, rs []RtcGroupReduceCharge) RtcUserPlayerRecords {
-			return RtcUserPlayerRecords{Key: k, Records: rs}
-		}).
-		Set() // []{RtcUserPlayer, []RtcGroupReduceCharge}
-
-	// PrettyPrint_UserPlayerRecords(userPlayerRecords)
-
-	playerCharge := stream.NewStream[RtcUserPlayerRecords, []RtcUserPlayerCharge](userPlayerRecords).
-		Collect(stream.Collector[RtcUserPlayerRecords, any, []RtcUserPlayerCharge]{
+	playerCharge := stream.NewStream[RtcUserPlayerRecords, []RtcUserPlayerCharge](
+		stream.GroupBy(reduceCharges,
+			func(v RtcGroupReduceCharge) RtcUserPlayer {
+				return RtcUserPlayer{
+					Uid:        v.Uid,
+					AppId:      v.AppId,
+					PlayerId:   v.PlayerId,
+					RoomId:     v.RoomId,
+					Resolution: ResolutionTypeOf(v.Area),
+					Method:     v.Method,
+					Time:       v.Time / 300 * 300,
+				}
+			},
+			func(k RtcUserPlayer, rs []RtcGroupReduceCharge) RtcUserPlayerRecords {
+				return RtcUserPlayerRecords{Key: k, Records: rs}
+			}).
+			Collect()).
+		Aggregate(stream.Aggregator[RtcUserPlayerRecords, any, []RtcUserPlayerCharge]{
 			Supplier: func() any {
 				return utils.NewSet[*RtcUserPlayerCharge]()
 			},
-			BiConsumer: func(z any, r RtcUserPlayerRecords) {
+			Transform: func(z any, r RtcUserPlayerRecords) {
 				if len(r.Records) == 0 {
 					return
 				}
@@ -158,11 +154,11 @@ func accumulate(records []RtcChargeRecord) {
 					charge.Duration += r1.Duration
 					charge.Flow += r1.Bytes
 				}
-				charge.Duration = min(charge.Duration, _DURATION_SECONDS_DEFAULT)
+				charge.Duration = min(charge.Duration, _AGG_DURATION_SECONDS_DEFAULT)
 
 				set.Add(&charge)
 			},
-			Function: func(z any) []RtcUserPlayerCharge {
+			Collect: func(z any) []RtcUserPlayerCharge {
 				set := z.(*utils.Set[*RtcUserPlayerCharge])
 				playerCharges := make([]RtcUserPlayerCharge, 0, set.Size())
 
@@ -176,25 +172,24 @@ func accumulate(records []RtcChargeRecord) {
 
 	PrettyPrint_PlayerCharge(playerCharge)
 
-	userRecords := stream.GroupBy[RtcUserPlayerCharge, RtcUserRecords, RtcUser](playerCharge,
-		func(v RtcUserPlayerCharge) RtcUser {
-			return RtcUser{
-				Uid:        v.Uid,
-				AppId:      v.AppId,
-				Resolution: v.Resolution,
-				Method:     v.Method,
-				Time:       v.Time,
-			}
-		},
-		func(k RtcUser, rs []RtcUserPlayerCharge) RtcUserRecords {
-			return RtcUserRecords{Key: k, Records: rs}
-		}).
-		Set() // []{RtcUser, []RtcUserPlayerCharge}
-
-	userCharge := stream.NewStream[RtcUserRecords, []RtcUserCharge](userRecords).
-		Collect(stream.Collector[RtcUserRecords, any, []RtcUserCharge]{
+	userCharge := stream.NewStream[RtcUserRecords, []RtcUserCharge](
+		stream.GroupBy(playerCharge,
+			func(v RtcUserPlayerCharge) RtcUser {
+				return RtcUser{
+					Uid:        v.Uid,
+					AppId:      v.AppId,
+					Resolution: v.Resolution,
+					Method:     v.Method,
+					Time:       v.Time,
+				}
+			},
+			func(k RtcUser, rs []RtcUserPlayerCharge) RtcUserRecords {
+				return RtcUserRecords{Key: k, Records: rs}
+			}).
+			Collect()).
+		Aggregate(stream.Aggregator[RtcUserRecords, any, []RtcUserCharge]{
 			Supplier: func() any { return utils.NewSet[*RtcUserCharge]() },
-			BiConsumer: func(z any, r RtcUserRecords) {
+			Transform: func(z any, r RtcUserRecords) {
 				set := z.(*utils.Set[*RtcUserCharge])
 				charge := RtcUserCharge{RtcUser: r.Key}
 
@@ -206,7 +201,7 @@ func accumulate(records []RtcChargeRecord) {
 				}
 				set.Add(&charge)
 			},
-			Function: func(z any) []RtcUserCharge {
+			Collect: func(z any) []RtcUserCharge {
 				set := z.(*utils.Set[*RtcUserCharge])
 				userCharges := make([]RtcUserCharge, 0, set.Size())
 
