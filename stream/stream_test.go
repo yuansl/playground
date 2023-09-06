@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yuansl/playground/utils"
+	"github.com/stretchr/testify/assert"
 )
 
 type DomainCdnTraffic struct {
@@ -52,27 +52,19 @@ func TestStream(t *testing.T) {
 			expected: nil,
 			exec: func(input any) any {
 				in := input.([]int)
-				out := NewStream[int, []int](in).
-					Map(func(v int) int {
+				out := NewStream[int, int, int](in).
+					Map(FunctionFn[int, int](func(v int) int {
 						return v * 3
-					}).
-					Flatmap(func(v int) []int {
-						return []int{v, v + 1}
-					}).
-					Aggregate(Aggregator[int, any, []int]{
-						Supplier: func() any { return utils.NewSet[int]() },
-						Transform: func(z any, x int) {
-							z.(*utils.Set[int]).Add(x)
-						},
-						Collect: func(z any) []int {
-							set := z.(*utils.Set[int])
-							result := make([]int, 0, set.Size())
-							for i := 0; i < set.Size(); i++ {
-								result = append(result, set.Get(i))
-							}
-							return result
-						},
-					})
+					})).
+					Flatmap(FunctionFn[int, *Stream[any, int, int]](func(v int) *Stream[any, int, int] {
+						return NewStream[any, int, int]([]any{v, v + 1})
+					})).
+					Map(FunctionFn[any, int](
+						func(v any) int {
+							return v.(int)
+						})).
+					Distinct().
+					Collect()
 				if len(out) != 10 {
 					t.Fatalf("mismatch: got %d items, but expected 10", len(out))
 				}
@@ -91,58 +83,62 @@ func TestStream(t *testing.T) {
 			expected: nil,
 			exec: func(input any) any {
 				in := input.([]DomainCdnTraffic)
-				out := NewStream[DomainCdnTraffic, []DomainTraffic](in).
-					Filter(func(v DomainCdnTraffic) bool {
+				out := NewStream[DomainCdnTraffic, any, DomainTraffic](in).
+					Filter(PredicateFn[DomainCdnTraffic](func(v DomainCdnTraffic) bool {
 						return v.Cdn == "baidu"
-					}).
-					Map(func(v DomainCdnTraffic) DomainCdnTraffic {
+					})).
+					ForEach(ConsumerFn[*DomainCdnTraffic](func(v *DomainCdnTraffic) {
 						for i := 0; i < len(v.Points); i++ {
 							p := &v.Points[i]
-
 							*p *= 3
 						}
-						return v
-					}).
-					Aggregate(Aggregator[DomainCdnTraffic, any, []DomainTraffic]{
-						Supplier: func() any { return utils.NewSet[*DomainTraffic]() },
-						Transform: func(z any, x DomainCdnTraffic) {
-							z.(*utils.Set[*DomainTraffic]).
-								Add(&DomainTraffic{Domain: x.Domain, Day: x.Day, Points: x.Points})
-						},
-						Collect: func(z any) []DomainTraffic {
-							set := z.(*utils.Set[*DomainTraffic])
-							result := make([]DomainTraffic, 0, set.Size())
+					})).
+					Map(FunctionFn[DomainCdnTraffic, DomainTraffic](
+						func(x DomainCdnTraffic) DomainTraffic {
+							return DomainTraffic{Domain: x.Domain, Day: x.Day, Points: x.Points}
+						})).
+					Collect()
 
-							for i := 0; i < set.Size(); i++ {
-								result = append(result, *set.Get(i))
-							}
-							return result
-						},
-					})
-				t.Logf("out=%v\n", out)
+				assert.Equal(t, 2, len(out))
+				if out[0].Domain == "a" {
+					assert.Equal(t, []int{12, 15, 18}, out[0].Points)
+					assert.Equal(t, []int{3, 6, 9}, out[1].Points)
+				} else if out[0].Domain == "b" {
+					assert.Equal(t, []int{3, 6, 9}, out[0].Points)
+					assert.Equal(t, []int{12, 15, 18}, out[1].Points)
+				} else {
+					t.Fatal("mismatch: out[0].domain must be one of a or b")
+				}
 
 				type GroupByKey struct {
 					Domain string
 					Day    time.Time
 				}
 
-				s2 := GroupBy[DomainCdnTraffic, DomainTraffic, GroupByKey](in,
-					func(v DomainCdnTraffic) GroupByKey {
-						return GroupByKey{Domain: v.Domain, Day: v.Day}
-					},
-					func(k GroupByKey, values []DomainCdnTraffic) DomainTraffic {
-						points := []int{}
-
-						for _, value := range values {
-							if len(points) == 0 {
-								points = make([]int, len(value.Points))
+				out2 := NewStream[DomainCdnTraffic, GroupByKey, DomainCdnTraffic](in).
+					GroupBy(func(t DomainCdnTraffic) GroupByKey {
+						return GroupByKey{Domain: t.Domain, Day: t.Day}
+					}).
+					ReduceByKey(
+						func(gv Tuple[GroupByKey, any]) Tuple[GroupByKey, []DomainCdnTraffic] {
+							return Tuple[GroupByKey, []DomainCdnTraffic]{
+								Key: gv.Key, Value: gv.Value.([]DomainCdnTraffic),
 							}
-							points = AddArray(points, value.Points)
-						}
-						return DomainTraffic{Domain: k.Domain, Day: k.Day, Points: points}
-					},
-				).Collect()
-				t.Logf("s2 = %+v\n", s2)
+						},
+						BinaryOpFn[DomainCdnTraffic](
+							func(v1, v2 DomainCdnTraffic) DomainCdnTraffic {
+								_v1 := v1
+								_v1.Points = AddArray(_v1.Points, v2.Points)
+								return _v1
+							})).
+					Map(FunctionFn[Tuple[GroupByKey, any], DomainCdnTraffic](
+						func(gv Tuple[GroupByKey, any]) DomainCdnTraffic {
+							v := gv.Value.(DomainCdnTraffic)
+							return DomainCdnTraffic{Domain: v.Domain, Day: v.Day, Points: v.Points}
+						})).
+					Collect()
+
+				t.Logf("s3=%+v\n", out2)
 
 				return nil
 			},
