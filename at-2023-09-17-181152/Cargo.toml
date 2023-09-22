@@ -1,0 +1,16 @@
+# snippet of code @ 2023-09-17 18:11:52
+
+# === Rust Playground ===
+# This snippet is in: /home/yuansl/src/playground/at-2023-09-17-181152/
+
+# Execute the snippet: C-c C-c
+# Delete the snippet completely: C-c k
+# Toggle between main.rs and Cargo.toml: C-c b
+
+[package]
+name = "foo"
+version = "0.99.0"
+authors = ["Rust Example <rust-snippet@example.com>"]
+edition = "2021"
+
+[dependencies]

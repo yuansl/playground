@@ -18,9 +18,9 @@ func Fatal(v ...any) {
 		return false
 	}
 	if formatted() {
-		fmt.Fprintf(os.Stderr, "fatal error:"+v[0].(string), v[1:]...)
+		fmt.Fprintf(os.Stderr, "fatal error: "+v[0].(string), v[1:]...)
 	} else {
-		fmt.Fprintln(os.Stderr, "fatal error:", v)
+		fmt.Fprintln(os.Stderr, "fatal error: ", v)
 	}
 	pc, file, line, _ := runtime.Caller(1)
 	fn := runtime.FuncForPC(pc)
