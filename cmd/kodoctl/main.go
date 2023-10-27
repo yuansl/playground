@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/yuansl/playground/cmd/kodoctl/oss"
@@ -65,29 +66,9 @@ func main() {
 
 	storage := kodo.NewStorageService(_accessKey, _secretKey, _bucket)
 
-	ctx := context.TODO()
+	ctx := util.InitSignalHandler(context.TODO())
 
 	switch action := os.Args[1]; action {
-	case "download":
-		if _key == "" {
-			utils.Fatal("kodo: oss key must not be empty")
-		}
-		data, err := storage.Download(ctx, _key)
-		if err != nil {
-			utils.Fatal("store.Download error:", err)
-		}
-		output := os.Stdout
-		if _output != "" {
-			output, err = os.OpenFile(_output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-			if err != nil {
-				utils.Fatal("os.OpenFile:", err)
-			}
-			defer output.Close()
-		}
-		if _, err = output.Write(data); err != nil {
-			utils.Fatal("os.Write:", err)
-		}
-
 	case "list":
 		var options []oss.ListOption
 		if _prefix != "" {
@@ -103,8 +84,29 @@ func main() {
 		for _, it := range files {
 			fmt.Printf("file: %+v\n", it)
 		}
+	case "download":
+		if _key == "" {
+			utils.Fatal("kodo: oss key must not be empty")
+		}
+		data, err := storage.Download(ctx, _key)
+		if err != nil {
+			utils.Fatal("store.Download error:", err)
+		}
+		if _output == "" {
+			_output = filepath.Base(_key)
+		}
+		output, err := os.OpenFile(_output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			utils.Fatal("os.OpenFile:", err)
+		}
+		defer output.Close()
+
+		if _, err = output.Write(data); err != nil {
+			utils.Fatal("os.Write:", err)
+		}
 	case "upload":
-		fp, err := os.Open(_filename)
+		path, _ := filepath.Abs(_filename)
+		fp, err := os.Open(path)
 		if err != nil {
 			util.Fatal(err)
 		}
@@ -113,7 +115,7 @@ func main() {
 		var options []oss.UploadOption
 
 		if _key == "" {
-			_key = _KODO_FILE_KEY_PREFIX_DEFAULT + "/" + _filename
+			_key = _KODO_FILE_KEY_PREFIX_DEFAULT + "/" + filepath.Base(path)
 		}
 		options = append(options, kodo.WithKey(_key))
 		if _expiry > 0 {
