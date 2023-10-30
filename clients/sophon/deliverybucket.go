@@ -2,18 +2,14 @@ package sophon
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
 const _FUSION_SUFY_ENDPOINT = "http://fusiondomainproxy.qcdn-sophon-sufy.qa.qiniu.io"
@@ -22,52 +18,6 @@ var ErrInvalid = errors.New("clients.sophon: invalid argument")
 
 type Client struct {
 	*http.Client
-}
-
-type httpRequest struct {
-	url          string
-	method       string
-	query        url.Values
-	body         io.Reader
-	contentType  string
-	extraHeaders http.Header
-}
-
-func (client *Client) send(ctx context.Context, req *httpRequest, res any) error {
-	if req.method == "" {
-		return fmt.Errorf("%w: method must not be empty", ErrInvalid)
-	}
-	if req.url == "" {
-		return fmt.Errorf("%w: url must not be empty", ErrInvalid)
-	}
-	url := req.url
-	if len(req.query) > 0 {
-		url += "?" + req.query.Encode()
-	}
-	hreq, err := http.NewRequestWithContext(ctx, req.method, url, req.body)
-	if err != nil {
-		return err
-	}
-	if req.contentType != "" {
-		hreq.Header.Set("Content-Type", req.contentType)
-	}
-	for k, vals := range req.extraHeaders {
-		for _, v := range vals {
-			hreq.Header.Add(k, v)
-		}
-	}
-
-	hres, err := client.Do(hreq)
-	if err != nil {
-		return err
-	}
-	defer hres.Body.Close()
-
-	data, _ := httputil.DumpResponse(hres, true)
-
-	log.Printf("Response(raw): '%s'\n", data)
-
-	return json.NewDecoder(hres.Body).Decode(res)
 }
 
 type BucketRequest struct {
@@ -102,7 +52,7 @@ func (client *Client) GetDomainDeliveryBucket(ctx context.Context, req *BucketRe
 	return &res, nil
 }
 
-type ClientOption utils.Option
+type ClientOption util.Option
 
 type clientOptions struct {
 	accessKey string
@@ -110,7 +60,7 @@ type clientOptions struct {
 }
 
 func WithCredentials(accessKey, secretKey string) ClientOption {
-	return utils.OptionFn(func(op any) {
+	return util.OptionFunc(func(op any) {
 		op.(*clientOptions).accessKey = accessKey
 		op.(*clientOptions).secretKey = secretKey
 	})
@@ -124,7 +74,7 @@ func NewClient(opts ...ClientOption) *Client {
 		op.Apply(&options)
 	}
 	if options.accessKey != "" && options.secretKey != "" {
-		transport = utils.NewAuthorizedTransport(options.accessKey, options.secretKey)
+		transport = util.NewAuthorizedTransport(options.accessKey, options.secretKey)
 	}
 	return &Client{
 		Client: &http.Client{

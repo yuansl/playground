@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
-var fatal = utils.Fatal
+var fatal = util.Fatal

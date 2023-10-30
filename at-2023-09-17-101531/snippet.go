@@ -19,10 +19,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
-var fatal = utils.Fatal
+var fatal = util.Fatal
 
 type Filter struct {
 }

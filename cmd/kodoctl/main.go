@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yuansl/playground/cmd/kodoctl/oss"
-	"github.com/yuansl/playground/cmd/kodoctl/oss/kodo"
+	"github.com/yuansl/playground/oss"
+	"github.com/yuansl/playground/oss/kodo"
 	"github.com/yuansl/playground/util"
-	"github.com/yuansl/playground/utils"
 )
 
 const (
@@ -53,7 +52,7 @@ func parseCmdArgs(args []string) {
 	flags.DurationVar(&_expiry, "expiry", 24*time.Hour, "specify expiry date of a file storead in oss")
 	flags.StringVar(&_output, "o", "", "save as ...")
 	if err := flags.Parse(args[1:]); err != nil {
-		utils.Fatal(err)
+		util.Fatal(err)
 	}
 }
 
@@ -64,8 +63,7 @@ func main() {
 	}
 	parseCmdArgs(os.Args[1:])
 
-	storage := kodo.NewStorageService(_accessKey, _secretKey, _bucket)
-
+	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey), kodo.WithBucket(_bucket))
 	ctx := util.InitSignalHandler(context.TODO())
 
 	switch action := os.Args[1]; action {
@@ -79,30 +77,30 @@ func main() {
 		}
 		files, err := storage.List(ctx, options...)
 		if err != nil {
-			utils.Fatal(err)
+			util.Fatal(err)
 		}
 		for _, it := range files {
 			fmt.Printf("file: %+v\n", it)
 		}
 	case "download":
 		if _key == "" {
-			utils.Fatal("kodo: oss key must not be empty")
+			util.Fatal("kodo: oss key must not be empty")
 		}
 		data, err := storage.Download(ctx, _key)
 		if err != nil {
-			utils.Fatal("store.Download error:", err)
+			util.Fatal("store.Download error:", err)
 		}
 		if _output == "" {
 			_output = filepath.Base(_key)
 		}
 		output, err := os.OpenFile(_output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
-			utils.Fatal("os.OpenFile:", err)
+			util.Fatal("os.OpenFile:", err)
 		}
 		defer output.Close()
 
 		if _, err = output.Write(data); err != nil {
-			utils.Fatal("os.Write:", err)
+			util.Fatal("os.Write:", err)
 		}
 	case "upload":
 		path, _ := filepath.Abs(_filename)
@@ -123,11 +121,10 @@ func main() {
 		}
 		res, err := storage.Upload(ctx, fp, options...)
 		if err != nil {
-			utils.Fatal(err)
+			util.Fatal(err)
 		}
 		fmt.Printf("Saved file %s as %+v in kodo successfully!\n", _filename, res)
 	default:
 		panic("Unknown action: " + action)
 	}
-
 }

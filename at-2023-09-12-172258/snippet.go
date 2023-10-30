@@ -17,10 +17,10 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
-var fatal = utils.Fatal
+var fatal = util.Fatal
 
 func SaveAs(fp *os.File) {
 

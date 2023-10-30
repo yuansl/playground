@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/yuansl/playground/apidemo/api/rpc/proto"
-	"github.com/yuansl/playground/tracer"
+	"github.com/yuansl/playground/trace"
 )
 
 var (
@@ -71,7 +71,7 @@ type accountService struct {
 }
 
 func (srv *accountService) ListUser(ctx context.Context, uid ...uint) ([]User, error) {
-	ctx, span := tracer.GetTracerProvider().Tracer("").Start(ctx, "accountService.ListUser")
+	ctx, span := trace.GetTracerProvider().Tracer("").Start(ctx, "accountService.ListUser")
 	defer span.End()
 
 	span.AddEvent(fmt.Sprintf("Request uid= '%v'", uid))
@@ -92,7 +92,7 @@ func (srv *accountService) ListUser(ctx context.Context, uid ...uint) ([]User, e
 
 func (cli *accountService) Close() {
 	cli.closeGrpcConn()
-	tracer.GetTracerProvider().Shutdown(context.TODO())
+	trace.GetTracerProvider().Shutdown(context.TODO())
 }
 
 func NewAccountService(addr string) AccountService {

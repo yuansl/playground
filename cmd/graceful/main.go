@@ -16,7 +16,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
 var HOSTNAME string
@@ -54,7 +54,7 @@ func InitSignalHandler() context.Context {
 var (
 	graceful bool
 
-	fatal = utils.Fatal
+	fatal = util.Fatal
 )
 
 func parseCmdArgs() {

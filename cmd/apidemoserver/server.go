@@ -11,7 +11,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/yuansl/playground/apidemo/api/rpc/proto"
 	"github.com/yuansl/playground/logger"
-	"github.com/yuansl/playground/tracer"
+	trace1 "github.com/yuansl/playground/trace"
 	"github.com/yuansl/playground/util"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
@@ -111,10 +111,10 @@ func initializeGrpcServer(srv *Server) {
 			grpc.ConnectionTimeout(srv.config.GrpcServer.ConnectTimeout),
 			grpc.MaxRecvMsgSize(srv.config.GrpcServer.MaxMsgSize),
 			grpc.ChainUnaryInterceptor(
-				otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tracer.GetTracerProvider())),
+				otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(trace1.GetTracerProvider())),
 				grpc.UnaryServerInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 					span := trace.SpanFromContext(ctx)
-					ctx = logger.NewContext(ctx, logger.New(span.SpanContext().TraceID().String()))
+					ctx = logger.NewContext(ctx, logger.NewWith(span.SpanContext().TraceID().String()))
 
 					grpc.SendHeader(ctx, metadata.Pairs("X-Reqid", span.SpanContext().TraceID().String()))
 
@@ -130,8 +130,9 @@ func initializeGrpcServer(srv *Server) {
 func initializeHttpServer(srv *Server) {
 	mux := runtime.NewServeMux(runtime.WithErrorHandler(runtime.ErrorHandlerFunc(func(ctx context.Context, _ *runtime.ServeMux, _ runtime.Marshaler, w http.ResponseWriter, req *http.Request, err error) {
 		if md, ok := metadata.FromOutgoingContext(ctx); ok {
-			if id, exists := md["x-reqid"]; exists {
-				ctx = logger.NewContext(ctx, logger.New(id...))
+
+			if ids := md.Get("x-reqid"); len(ids) > 0 {
+				ctx = logger.NewContext(ctx, logger.NewWith(ids[0]))
 			}
 		}
 		if s, ok := status.FromError(err); ok {

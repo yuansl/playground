@@ -7,7 +7,7 @@ import (
 
 	"github.com/yuansl/playground/clients/logetl"
 	"github.com/yuansl/playground/cmd/etlctl/etlservice"
-	"github.com/yuansl/playground/utils"
+	"github.com/yuansl/playground/util"
 )
 
 const _SYNC_BATCHSIZE_MAX = 200
@@ -59,10 +59,10 @@ func (srv *logetlService) EtlRetry(ctx context.Context, domains []string, cdn st
 	return nil
 }
 
-type EtlOption utils.Option
+type EtlOption util.Option
 
 func WithSyncBatchSize(size int) EtlOption {
-	return utils.OptionFn(func(op any) {
+	return util.OptionFunc(func(op any) {
 		op.(*etlOptions).syncBatchSize = size
 	})
 }

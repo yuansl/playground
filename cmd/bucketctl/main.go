@@ -36,19 +36,6 @@ func (t *AuthorizedTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 var _ http.RoundTripper = (*AuthorizedTransport)(nil)
 
-type Client struct {
-	*http.Client
-}
-
-func NewClient(accessKey, secretKey string) *Client {
-	return &Client{Client: &http.Client{
-		Transport: &AuthorizedTransport{
-			RoundTripper: http.DefaultTransport,
-			creds:        auth.New(accessKey, secretKey),
-		},
-	}}
-}
-
 type httpRequest struct {
 	uri          string
 	method       string

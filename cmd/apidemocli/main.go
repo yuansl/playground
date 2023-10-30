@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/yuansl/playground/logger"
-	"github.com/yuansl/playground/tracer"
+	"github.com/yuansl/playground/trace"
 	"github.com/yuansl/playground/util"
 )
 
@@ -73,7 +73,7 @@ func run(ctx context.Context, acct AccountService) error {
 
 				_numSentRequests.Add(+1)
 
-				ctx, span := tracer.GetTracerProvider().Tracer("").Start(ctx, "func1")
+				ctx, span := trace.GetTracerProvider().Tracer("").Start(ctx, "func1")
 				defer span.End()
 
 				res, err := doListUsers(ctx, acct)
@@ -81,7 +81,7 @@ func run(ctx context.Context, acct AccountService) error {
 					errorq <- err
 					return
 				}
-				logger.New(span.SpanContext().TraceID().String()).Infof("Response=%+v\n", res)
+				logger.NewWith(span.SpanContext().TraceID().String()).Infof("Response=%+v\n", res)
 			}()
 		}
 		wg.Wait()

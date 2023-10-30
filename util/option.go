@@ -4,9 +4,9 @@ type Option interface {
 	Apply(any)
 }
 
-// OptionFn implements interface 'Option'
-type OptionFn func(any)
+// OptionFunc implements interface 'Option'
+type OptionFunc func(any)
 
-func (fn OptionFn) Apply(o any) {
+func (fn OptionFunc) Apply(o any) {
 	fn(o)
 }

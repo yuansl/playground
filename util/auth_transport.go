@@ -34,13 +34,13 @@ type transportOptions struct {
 }
 
 func WithTokenType(tokenType auth.TokenType) TransportOption {
-	return OptionFn(func(op any) {
+	return OptionFunc(func(op any) {
 		op.(*transportOptions).tokenType = tokenType
 	})
 }
 
 func WithTransport(transport http.RoundTripper) TransportOption {
-	return OptionFn(func(op any) {
+	return OptionFunc(func(op any) {
 		op.(*transportOptions).transport = transport
 	})
 }
