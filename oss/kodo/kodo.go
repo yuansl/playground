@@ -230,7 +230,14 @@ func (kodo *storageService) List(ctx context.Context, bucket string, opts ...oss
 			return nil, fmt.Errorf("kodo.bucket.List(bucket='%s'): %v", bucket, err)
 		}
 		for _, it := range res.Items {
-			files = append(files, oss.File{Name: it.Key, Size: it.Fsize, Md5sum: it.Md5})
+			files = append(files, oss.File{
+				Name:   it.Key,
+				Size:   it.Fsize,
+				Md5sum: it.Md5,
+				Create: time.Unix(it.PutTime/10_000_000, it.PutTime%10_000_000),
+				Type:   oss.StorageType(it.Type),
+				Mime:   it.MimeType,
+			})
 			if len(files) >= options.limit {
 				goto endit
 			}

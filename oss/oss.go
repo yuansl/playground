@@ -9,10 +9,23 @@ import (
 	"github.com/yuansl/playground/util"
 )
 
+//go:generate stringer -type StorageType -linecomment
+type StorageType int
+
+const (
+	STORAGE_STANARD     StorageType = iota // standard
+	STORAGE_LOWFREQ                        // low freq
+	STORAGE_ARCHIVE                        // archive
+	STORAGE_DEEPARCHIVE                    // deep archive
+)
+
 type File struct {
 	Name   string
 	Size   int64
 	Md5sum string
+	Create time.Time
+	Type   StorageType
+	Mime   string
 }
 
 type Stat struct {

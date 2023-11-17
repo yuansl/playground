@@ -42,8 +42,10 @@ func init() {
 }
 
 func parseCmdArgs(args []string) {
-	flags := flag.NewFlagSet("kodoctl", flag.ExitOnError)
-
+	if len(args) == 0 {
+		panic("BUG: args must not be empty")
+	}
+	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&_bucket, "bucket", _KODO_BUCKET_DEFAULT, "specify the kodo bucket")
 	flags.StringVar(&_prefix, "prefix", _KODO_FILE_KEY_PREFIX_DEFAULT, "specify prefix of a object file")
 	flags.IntVar(&_limit, "limit", 5, "list <limit> files at most")
@@ -56,11 +58,26 @@ func parseCmdArgs(args []string) {
 	}
 }
 
+func usage() {
+	fmt.Printf(`kodoctl %s
+Usage: %s [Command]
+
+kodoctl is a command line tool for managing your files which stored in kodo
+
+Command:
+      download - download from kodo
+      list     - list files stored in kodo
+      upload   - upload a file to kodo
+`, Version(), os.Args[0])
+
+	os.Exit(0)
+}
+
 func main() {
 	if len(os.Args) == 1 {
-		fmt.Printf("Usage: %s list|download|upload\n", os.Args[0])
-		os.Exit(0)
+		usage()
 	}
+
 	parseCmdArgs(os.Args[1:])
 
 	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey))
@@ -124,7 +141,9 @@ func main() {
 			util.Fatal(err)
 		}
 		fmt.Printf("Saved file %s as %+v in kodo successfully!\n", _filename, res)
+	case "-h", "--help":
+		fallthrough
 	default:
-		panic("Unknown action: " + action)
+		usage()
 	}
 }

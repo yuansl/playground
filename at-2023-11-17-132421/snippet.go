@@ -16,10 +16,14 @@ import (
 
 type mySlice []string
 
-func Clone[E any](s []E) []E {
+func Clone[S ~[]E, E any](s S) S {
 	return append(s[:0:0], s...)
 }
 
 func main() {
 	fmt.Println("Results:", Clone(mySlice{"a", "b", "c"}))
+	var v1 = make(chan struct{})
+	var v2 = make(chan struct{}, 1)
+	v1 = v2
+	_ = v1
 }
