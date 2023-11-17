@@ -1,3 +1,9 @@
+SHELL := /bin/bash
+
+ifeq ($(GOPRIVATE),)
+    export GOPRIVATE = 'github.com/qbox/pili,github.com/qbox/net-deftones'
+endif
+
 all: build
 
 build:

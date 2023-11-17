@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,8 +13,10 @@ import (
 
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/oss/kodo"
-	trace "github.com/yuansl/playground/trace"
+	playtrace "github.com/yuansl/playground/trace"
 	"github.com/yuansl/playground/util"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -30,6 +32,8 @@ var (
 	_prefix    string
 	_limit     int
 )
+
+var _applicationTracer = playtrace.GetTracerProvider().Tracer("")
 
 func init() {
 	if env := os.Getenv("ACCESS_KEY"); env != "" {
@@ -47,12 +51,18 @@ func parseCmdArgs() {
 	flag.Parse()
 }
 
-func Download(ctx context.Context, name string, kodosrv oss.ObjectStorageService) {
-	data, err := kodosrv.Download(ctx, name)
+func Download(ctx context.Context, bucket, name string, srv oss.ObjectStorageService) {
+	data, err := srv.Download(ctx, bucket, name)
 	if err != nil {
 		util.Fatal("kodo.Download:", err)
 	}
-	fmt.Printf("got %d bytes from kodo: %s\n", len(data), name)
+
+	span := trace.SpanFromContext(ctx)
+
+	if span.IsRecording() {
+		span.SetAttributes(attribute.String("name", name))
+		span.SetAttributes(attribute.Int("databytes", len(data)))
+	}
 
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
@@ -60,40 +70,49 @@ func Download(ctx context.Context, name string, kodosrv oss.ObjectStorageService
 	}
 	defer gz.Close()
 
-	data, err = io.ReadAll(gz)
-	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			util.Fatal("io.ReadAll(gzip(%s)) error: %v\n", name, err)
-		}
+	fp, err := os.CreateTemp("/tmp/", "*")
+	defer fp.Close()
+	b := bufio.NewWriter(fp)
+	io.Copy(b, gz)
+	b.Flush()
+
+	if span.IsRecording() {
+		stat, _ := fp.Stat()
+		span.SetAttributes(attribute.Int("gzbytes", int(stat.Size())))
 	}
-	fmt.Printf("got %d from gzip file %s\n", len(data), name)
 }
+
+func listBucketFiles(ctx context.Context, bucket string, srv oss.ObjectStorageService) {}
 
 func main() {
 	parseCmdArgs()
 
-	tracer := trace.GetTracerProvider()
+	ctx, span := _applicationTracer.Start(context.TODO(), "kodo.List")
+	defer span.End()
 
-	_ = tracer
-
-	kodosrv := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey), kodo.WithBucket(_bucket), kodo.WithEndpoint("http://ria8j59xt.hd-bkt.clouddn.com"))
-	ctx := context.TODO()
-
+	kodosrv := kodo.NewStorageService(
+		kodo.WithCredential(_accessKey, _secretKey),
+		kodo.WithLinkDomain("http://ria8j59xt.hd-bkt.clouddn.com"),
+	)
 	options := []oss.ListOption{kodo.WithListLimit(_limit)}
 	if _prefix != "" {
 		options = append(options, kodo.WithListPrefix(_prefix))
 	}
-	files, err := kodosrv.List(ctx, options...)
+	files, err := kodosrv.List(ctx, _bucket, options...)
 	if err != nil {
 		util.Fatal(err)
 	}
 	for _, file := range files {
-		fmt.Printf("file=%+v\n", file)
-
 		func() {
 			start := time.Now()
-			defer func() { fmt.Printf("time elapsed for downing file %s: %v\n", file.Name, time.Since(start)) }()
+			defer func() {
+				fmt.Printf("time elapsed for downing file %s: %v\n", file.Name, time.Since(start))
+			}()
 
+			ctx, span := _applicationTracer.Start(ctx, "Download")
+			defer span.End()
+
+			Download(ctx, _bucket, file.Name, kodosrv)
 		}()
 	}
 }

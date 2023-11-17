@@ -2,6 +2,7 @@ package kodo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/qiniu/go-sdk/v7/auth"
 	"github.com/qiniu/go-sdk/v7/storage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/util"
@@ -27,13 +30,16 @@ const (
 	_KODO_FILE_EXPIRY_DEFAULT = 60 * time.Minute
 )
 
+var (
+	ErrInvalid = errors.New("kodo: invalid argument")
+)
+
 // storageService implements ObjectStorageService.
 type storageService struct {
 	credentials   *auth.Credentials
 	uploader      *storage.ResumeUploader
 	bucketManager *storage.BucketManager
-	bucket        string
-	endpoint      string
+	linkdomain    string
 }
 
 var _ oss.ObjectStorageService = (*storageService)(nil)
@@ -50,7 +56,7 @@ func WithPrivateUrlExpiry(expiry time.Duration) UrlOption {
 	})
 }
 
-func (kodo *storageService) UrlOfKey(ctx context.Context, key string, opts ...UrlOption) string {
+func (kodo *storageService) UrlOfKey(ctx context.Context, bucket, key string, opts ...UrlOption) string {
 	var options privateUrlOptions
 	for _, op := range opts {
 		op.Apply(&options)
@@ -58,7 +64,18 @@ func (kodo *storageService) UrlOfKey(ctx context.Context, key string, opts ...Ur
 	if options.expiry <= 0 {
 		options.expiry = _KODO_FILE_EXPIRY_DEFAULT
 	}
-	return storage.MakePrivateURL(kodo.credentials, kodo.endpoint, key, time.Now().Add(options.expiry).Unix())
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		apihost, _ := kodo.bucketManager.ApiHost(bucket)
+		span.SetAttributes(attribute.String("apihost", apihost))
+
+		rshost, _ := kodo.bucketManager.RsHost(bucket)
+		span.SetAttributes(attribute.String("rshost", rshost))
+
+		rsfhost, _ := kodo.bucketManager.RsfHost(bucket)
+		span.SetAttributes(attribute.String("rsfhost", rsfhost))
+	}
+	return storage.MakePrivateURL(kodo.credentials, kodo.linkdomain, key, time.Now().Add(options.expiry).Unix())
 }
 
 type DownloadOption util.Option
@@ -73,6 +90,8 @@ func WithRangeRequest(begin, end int) DownloadOption {
 }
 
 func doOnceHttpRequest(ctx context.Context, url string, opts ...DownloadOption) ([]byte, error) {
+	span := trace.SpanFromContext(ctx)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("http.NewRequest: %v", err)
@@ -85,6 +104,11 @@ func doOnceHttpRequest(ctx context.Context, url string, opts ...DownloadOption) 
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", options.rangeBegin, options.rangeEnd))
 	}
 
+	if span.IsRecording() {
+		span.SetAttributes(attribute.String("url", url),
+			attribute.Int("Range.begin", options.rangeBegin), attribute.Int("Range.end", options.rangeEnd))
+	}
+
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http.Client.Do: %v", err)
@@ -92,13 +116,25 @@ func doOnceHttpRequest(ctx context.Context, url string, opts ...DownloadOption) 
 	return io.ReadAll(io.LimitReader(res.Body, _KODO_RESPONSE_BODY_SIZE_MAX))
 }
 
-func (kodo *storageService) Download(ctx context.Context, key string) ([]byte, error) {
-	url := kodo.UrlOfKey(ctx, key)
+func (kodo *storageService) Download(ctx context.Context, bucket, key string) ([]byte, error) {
+	span := trace.SpanFromContext(ctx)
+
+	url := kodo.UrlOfKey(ctx, bucket, key)
 	res, err := http.Head(url)
 	if err != nil {
 		return nil, fmt.Errorf("http.Head: %v", err)
 	}
-	if !strings.Contains(res.Header.Get("Accept-Ranges"), "bytes") || res.ContentLength < _KODO_RANGE_REQUEST_TRIGGER_SIZE {
+
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("key", key),
+			attribute.String("Accept-ranges", res.Header.Get("Accept-Ranges")),
+			attribute.Int("Content-Length", int(res.ContentLength)),
+		)
+	}
+
+	if !strings.Contains(res.Header.Get("Accept-Ranges"), "bytes") ||
+		res.ContentLength < _KODO_RANGE_REQUEST_TRIGGER_SIZE {
 		return doOnceHttpRequest(ctx, url)
 	}
 
@@ -130,7 +166,8 @@ func (kodo *storageService) Download(ctx context.Context, key string) ([]byte, e
 					return
 				}
 				if len(data) != end-begin+1 {
-					errorq <- fmt.Errorf("mismatch: file: %s, got %d bytes data, but expected %d (Range: bytes=%d-%d)\n", key, len(data), end-begin+1, begin, end)
+					errorq <- fmt.Errorf("mismatch: file: %s, got %d bytes data, but expected %d (Range: bytes=%d-%d)\n",
+						key, len(data), end-begin+1, begin, end)
 					return
 				}
 
@@ -171,7 +208,7 @@ func WithListPrefix(prefix string) oss.ListOption {
 }
 
 // List implements ObjectStorageService.
-func (kodo *storageService) List(ctx context.Context, opts ...oss.ListOption) ([]oss.File, error) {
+func (kodo *storageService) List(ctx context.Context, bucket string, opts ...oss.ListOption) ([]oss.File, error) {
 	var files []oss.File
 	var options listOptions
 
@@ -186,11 +223,11 @@ func (kodo *storageService) List(ctx context.Context, opts ...oss.ListOption) ([
 		options.limit = 1
 	}
 	for marker := ""; ; {
-		res, hasNext, err := kodo.bucketManager.ListFilesWithContext(ctx, kodo.bucket,
+		res, hasNext, err := kodo.bucketManager.ListFilesWithContext(ctx, bucket,
 			append(inputOptions, storage.ListInputOptionsMarker(marker))...,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("kodo.bucket.List(bucket='%s'): %v", kodo.bucket, err)
+			return nil, fmt.Errorf("kodo.bucket.List(bucket='%s'): %v", bucket, err)
 		}
 		for _, it := range res.Items {
 			files = append(files, oss.File{Name: it.Key, Size: it.Fsize, Md5sum: it.Md5})
@@ -216,7 +253,6 @@ type NotifyFn func(blkIdx int, blkSize int, res *storage.BlkputRet)
 
 type uploadOptions struct {
 	key    string
-	bucket string
 	expiry time.Duration
 	notify NotifyFn
 }
@@ -224,12 +260,6 @@ type uploadOptions struct {
 func WithKey(key string) oss.UploadOption {
 	return util.OptionFunc(func(op any) {
 		op.(*uploadOptions).key = key
-	})
-}
-
-func WithSaveBucket(bucket string) oss.UploadOption {
-	return util.OptionFunc(func(op any) {
-		op.(*uploadOptions).bucket = bucket
 	})
 }
 
@@ -272,16 +302,16 @@ func (kodo *storageService) GetUploadToken(bucket string, expiry time.Duration) 
 }
 
 // Upload implements ObjectStorageService.
-func (kodo *storageService) Upload(ctx context.Context, reader io.Reader, opts ...oss.UploadOption) (*oss.UploadResult, error) {
+func (kodo *storageService) Upload(ctx context.Context, bucket string, reader io.Reader, opts ...oss.UploadOption) (*oss.UploadResult, error) {
 	var options uploadOptions
 
 	for _, op := range opts {
 		op.Apply(&options)
 	}
-	if options.bucket == "" {
-		options.bucket = kodo.bucket
+	if bucket == "" {
+		return nil, fmt.Errorf("%w: bucket must not be empty", ErrInvalid)
 	}
-	token := kodo.GetUploadToken(options.bucket, options.expiry)
+	token := kodo.GetUploadToken(bucket, options.expiry)
 
 	md5reader := NewMd5InterceptReader(reader)
 
@@ -289,7 +319,7 @@ func (kodo *storageService) Upload(ctx context.Context, reader io.Reader, opts .
 		return nil, fmt.Errorf("kodo.ResumeUploader.PutWithoutSize: %v", err)
 	}
 
-	st, err := kodo.bucketManager.Stat(options.bucket, options.key)
+	st, err := kodo.bucketManager.Stat(bucket, options.key)
 	if err != nil {
 		return nil, fmt.Errorf("kodo.BucketManager.Stat: %v", err)
 	}
@@ -297,17 +327,16 @@ func (kodo *storageService) Upload(ctx context.Context, reader io.Reader, opts .
 		Key:    options.key,
 		Size:   int(st.Fsize),
 		Md5sum: md5reader.Sum(),
-		Url:    kodo.UrlOfKey(ctx, options.key, WithPrivateUrlExpiry(options.expiry)),
+		Url:    kodo.UrlOfKey(ctx, bucket, options.key, WithPrivateUrlExpiry(options.expiry)),
 	}, nil
 }
 
 type ServiceOption util.Option
 
 type serviceOptions struct {
-	accessKey string
-	secretKey string
-	endpoint  string
-	bucket    string
+	accessKey  string
+	secretKey  string
+	linkdomain string
 }
 
 func WithCredential(accessKey, secretKey string) ServiceOption {
@@ -317,14 +346,10 @@ func WithCredential(accessKey, secretKey string) ServiceOption {
 	})
 }
 
-func WithEndpoint(endpoint string) ServiceOption {
+func WithLinkDomain(linkdomain string) ServiceOption {
 	return util.OptionFunc(func(opt any) {
-		opt.(*serviceOptions).endpoint = endpoint
+		opt.(*serviceOptions).linkdomain = linkdomain
 	})
-}
-
-func WithBucket(bucket string) ServiceOption {
-	return util.OptionFunc(func(opt any) { opt.(*serviceOptions).bucket = bucket })
 }
 
 func NewStorageService(opts ...ServiceOption) *storageService {
@@ -333,15 +358,14 @@ func NewStorageService(opts ...ServiceOption) *storageService {
 	for _, op := range opts {
 		op.Apply(&options)
 	}
-	if options.endpoint == "" {
-		options.endpoint = _KODO_SERVICE_ENDPOINT_DEFAULT
+	if options.linkdomain == "" {
+		options.linkdomain = _KODO_SERVICE_ENDPOINT_DEFAULT
 	}
 	credentials := auth.New(options.accessKey, options.secretKey)
 	return &storageService{
 		credentials:   credentials,
-		bucket:        options.bucket,
 		bucketManager: storage.NewBucketManager(credentials, nil),
 		uploader:      storage.NewResumeUploader(&storage.Config{}),
-		endpoint:      options.endpoint,
+		linkdomain:    options.linkdomain,
 	}
 }

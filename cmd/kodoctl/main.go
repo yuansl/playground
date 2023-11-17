@@ -63,7 +63,7 @@ func main() {
 	}
 	parseCmdArgs(os.Args[1:])
 
-	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey), kodo.WithBucket(_bucket))
+	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey))
 	ctx := util.InitSignalHandler(context.TODO())
 
 	switch action := os.Args[1]; action {
@@ -75,7 +75,7 @@ func main() {
 		if _limit > 0 {
 			options = append(options, kodo.WithListLimit(_limit))
 		}
-		files, err := storage.List(ctx, options...)
+		files, err := storage.List(ctx, _bucket, options...)
 		if err != nil {
 			util.Fatal(err)
 		}
@@ -86,7 +86,7 @@ func main() {
 		if _key == "" {
 			util.Fatal("kodo: oss key must not be empty")
 		}
-		data, err := storage.Download(ctx, _key)
+		data, err := storage.Download(ctx, _bucket, _key)
 		if err != nil {
 			util.Fatal("store.Download error:", err)
 		}
@@ -119,7 +119,7 @@ func main() {
 		if _expiry > 0 {
 			options = append(options, kodo.WithExpiry(_expiry))
 		}
-		res, err := storage.Upload(ctx, fp, options...)
+		res, err := storage.Upload(ctx, _bucket, fp, options...)
 		if err != nil {
 			util.Fatal(err)
 		}

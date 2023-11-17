@@ -39,8 +39,7 @@ type UploadOption util.Option
 type ListOption util.Option
 
 type ObjectStorageService interface {
-	List(ctx context.Context, opts ...ListOption) ([]File, error)
-	Stat(ctx context.Context, name string)
-	Upload(ctx context.Context, r io.Reader, opts ...UploadOption) (*UploadResult, error)
-	Download(ctx context.Context, key string) ([]byte, error)
+	List(ctx context.Context, bucket string, opts ...ListOption) ([]File, error)
+	Upload(ctx context.Context, bucket string, r io.Reader, opts ...UploadOption) (*UploadResult, error)
+	Download(ctx context.Context, bucket, key string) ([]byte, error)
 }

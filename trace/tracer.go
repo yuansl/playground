@@ -18,16 +18,16 @@ type TracerProvider interface {
 	Shutdown(context.Context) error
 }
 
-var lazyCreateTracer func() TracerProvider
+var lazyCreateTracerProvider func() TracerProvider
 
 func init() {
-	lazyCreateTracer = sync.OnceValue(func() TracerProvider {
+	lazyCreateTracerProvider = sync.OnceValue(func() TracerProvider {
 		spanExporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 		if err != nil {
 			util.Fatal(err)
 		}
-		_ = sdktrace.WithBatcher(spanExporter) // TODO
-		tracerProvider := sdktrace.NewTracerProvider()
+
+		tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(spanExporter))
 
 		otel.SetTracerProvider(tracerProvider)
 		otel.SetTextMapPropagator(propagation.TraceContext{})
@@ -37,5 +37,5 @@ func init() {
 }
 
 func GetTracerProvider() TracerProvider {
-	return lazyCreateTracer()
+	return lazyCreateTracerProvider()
 }

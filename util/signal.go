@@ -19,7 +19,7 @@ func InitSignalHandler(ctx context.Context, onSignal ...func()) context.Context 
 	go func() {
 		signals := make(chan os.Signal, 1)
 
-		signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+		signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1)
 		select {
 		case <-ctx.Done():
 			cancel(context.Canceled)

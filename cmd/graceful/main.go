@@ -11,7 +11,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strconv"
 	"sync"
 	"syscall"
@@ -28,27 +27,6 @@ func init() {
 			fatal("os.Hostname error:", err)
 		}
 	})()
-}
-
-func InitSignalHandler() context.Context {
-	ctx, cancel := context.WithCancelCause(context.TODO())
-	go func() {
-		sigchan := make(chan os.Signal, 1)
-
-		signal.Notify(sigchan, syscall.SIGUSR1, syscall.SIGINT, syscall.SIGTERM)
-		select {
-		case <-ctx.Done():
-			switch err := ctx.Err(); {
-			case errors.Is(err, context.Canceled):
-				cancel(context.Cause(ctx))
-			default:
-				cancel(err)
-			}
-		case sig := <-sigchan:
-			cancel(&onSignal{sig})
-		}
-	}()
-	return ctx
 }
 
 var (
@@ -157,7 +135,7 @@ func main() {
 		fatal("Listen addr error:", err)
 	}
 
-	ctx := InitSignalHandler()
+	ctx := util.InitSignalHandler(context.TODO())
 
 	if err := run(ctx, &http.Server{}, ln); err != nil {
 		fatal("run error: ", err)
