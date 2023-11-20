@@ -1,8 +1,9 @@
-package main
+package titannetwork
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/qbox/net-deftones/util"
+
 	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu"
 	"github.com/yuansl/playground/logger"
 )
@@ -25,7 +27,7 @@ var (
 
 type taiwuTransport struct {
 	username string
-	secret   string
+	secret   []byte
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -39,7 +41,7 @@ func (taiwu *taiwuTransport) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, err
 	}
 	form.Add("username", taiwu.username)
-	form.Add("secret", taiwu.secret)
+	form.Add("secret", string(taiwu.secret))
 	content := []byte(form.Encode())
 	req.Body = io.NopCloser(bytes.NewReader(content))
 	req.ContentLength = int64(len(content))
@@ -60,10 +62,11 @@ func (taiwu *taiwuTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 var _ http.RoundTripper = (*taiwuTransport)(nil)
 
-type taiwuClient struct {
+type Client struct {
 	*http.Client
 	endpoint string
 	token    string
+	version  int
 }
 
 type request struct {
@@ -74,7 +77,7 @@ type request struct {
 	body   io.Reader
 }
 
-func (client *taiwuClient) send(ctx context.Context, req *request, res any) error {
+func (client *Client) send(ctx context.Context, req *request, res any) error {
 	URL := client.endpoint + req.path
 	if len(req.query) > 0 {
 		URL += "?" + req.query.Encode()
@@ -115,7 +118,7 @@ type LogUrlResponseV2 struct {
 	Urls    []string
 }
 
-func (client *taiwuClient) LogUrlV2(ctx context.Context, domain string, timestamp time.Time) (links []taiwu.Link, err error) {
+func (client *Client) BossFlowLogUrlV2(ctx context.Context, domain string, timestamp time.Time) (links []taiwu.Link, err error) {
 	payload := url.Values{}
 	payload.Add("domain", domain)
 	payload.Add("time", timestamp.Format("200601021504"))
@@ -153,7 +156,7 @@ type LogUrlResponseV1 struct {
 	Url     string
 }
 
-func (client *taiwuClient) LogUrlV1(ctx context.Context, domain string, timestamp time.Time) ([]taiwu.Link, error) {
+func (client *Client) BossFlowLogUrlV1(ctx context.Context, domain string, timestamp time.Time) ([]taiwu.Link, error) {
 	payload := url.Values{}
 	payload.Add("domain", domain)
 	payload.Add("time", timestamp.Format("200601021504"))
@@ -181,25 +184,23 @@ func (client *taiwuClient) LogUrlV1(ctx context.Context, domain string, timestam
 }
 
 // LogLink implements TaiwuService.
-func (client *taiwuClient) LogLink(ctx context.Context, domain string, timestamp time.Time) ([]taiwu.Link, error) {
-	switch _version {
-	case 1:
-		return client.LogUrlV1(ctx, domain, timestamp)
+func (client *Client) LogLink(ctx context.Context, domain string, timestamp time.Time) ([]taiwu.Link, error) {
+	switch client.version {
 	case 2:
+		return client.BossFlowLogUrlV2(ctx, domain, timestamp)
+	case 1:
 		fallthrough
 	default:
-		return client.LogUrlV2(ctx, domain, timestamp)
+		return client.BossFlowLogUrlV1(ctx, domain, timestamp)
 	}
 }
 
-type DomainsResponse struct {
-	Result  string
-	Message string
-	Domains []string
-}
-
-func (client *taiwuClient) Domains(ctx context.Context, since time.Time) ([]string, error) {
-	var res DomainsResponse
+func (client *Client) BossFlowDomainList(ctx context.Context, since time.Time) ([]string, error) {
+	var res struct {
+		Result  string
+		Message string
+		Domains []string
+	}
 
 	if err := client.send(ctx, &request{path: "/boss/flow/domain_list/v1"}, &res); err != nil {
 		return nil, err
@@ -207,14 +208,55 @@ func (client *taiwuClient) Domains(ctx context.Context, since time.Time) ([]stri
 	return res.Domains, nil
 }
 
-var _ taiwu.TaiwuService = (*taiwuClient)(nil)
+var _ taiwu.TaiwuService = (*Client)(nil)
 
-func NewTaiwuClient() taiwu.TaiwuService {
-	return &taiwuClient{
+type Option util.Option
+
+type clientOptions struct {
+	endpoint string
+	version  int
+	username string
+	secret   []byte
+	token    string
+}
+
+func WithCredential(username string, secret []byte) Option {
+	return util.OptionFunc(func(opt any) {
+		opt.(*clientOptions).username = username
+		opt.(*clientOptions).secret = secret
+	})
+}
+
+func WithEndpoint(endpoint string) Option {
+	return util.OptionFunc(func(opt any) { opt.(*clientOptions).endpoint = endpoint })
+}
+
+func WithToken(token string) Option {
+	return util.OptionFunc(func(opt any) { opt.(*clientOptions).token = token })
+}
+
+func WithVersion(version int) Option {
+	return util.OptionFunc(func(opt any) { opt.(*clientOptions).version = version })
+}
+
+const _TITANNETWORK_ENDPOINT = "http://gateway.titannetwork.cn"
+
+func NewClient(opts ...Option) taiwu.TaiwuService {
+	var options clientOptions
+
+	for _, op := range opts {
+		op.Apply(&options)
+	}
+	if options.endpoint == "" {
+		options.endpoint = _TITANNETWORK_ENDPOINT
+	}
+	return &Client{
 		Client: &http.Client{Transport: &taiwuTransport{
-			username: "qiniu", secret: "a5c90e5370c80067a2ac78aab1badb90",
+			username: options.username,
+			secret:   options.secret,
 		}},
-		endpoint: "http://gateway.titannetwork.cn",
-		token:    "386BD183",
+		endpoint: options.endpoint,
+		token:    options.token,
+		version:  options.version,
 	}
 }

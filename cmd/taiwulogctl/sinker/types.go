@@ -1,4 +1,4 @@
-package main
+package sinker
 
 //go:generate stringer -type Region -linecomment
 type Region int
