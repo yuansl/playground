@@ -11,12 +11,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker"
 	"github.com/yuansl/playground/logger"
 	"github.com/yuansl/playground/util"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type TaiwuRawLog struct {
 	Did    string
@@ -157,37 +160,34 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 		egroup.Wait()
 	}()
 
-	go func() {
-		defer close(lineq)
+	egroup, ctx := errgroup.WithContext(ctx)
 
-		egroup, ctx := errgroup.WithContext(ctx)
-		defer egroup.Wait()
+	for _, file := range filenames {
+		_file := file
+		egroup.Go(func() error {
+			fp, err := os.Open(_file)
+			if err != nil {
+				util.Fatal(err)
+			}
+			defer fp.Close()
 
-		for _, file := range filenames {
-			_file := file
-			egroup.Go(func() error {
-				fp, err := os.Open(_file)
+			logger.FromContext(ctx).Infof("aggregating file %s ...\n", _file)
+
+			for r := bufio.NewReader(fp); ; {
+				line, err := r.ReadBytes('\n')
 				if err != nil {
-					util.Fatal(err)
-				}
-				defer fp.Close()
-
-				logger.FromContext(ctx).Infof("aggregating file %s ...\n", _file)
-
-				for r := bufio.NewReader(fp); ; {
-					line, err := r.ReadBytes('\n')
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							util.Fatal("bufio.ReadBytes: %v\n", err)
-						}
-						break
+					if !errors.Is(err, io.EOF) {
+						util.Fatal("bufio.ReadBytes: %v\n", err)
 					}
-					lineq <- &logline{bytes: bytes.TrimSpace(line), file: _file}
+					break
 				}
-				return nil
-			})
-		}
-	}()
+				lineq <- &logline{bytes: bytes.TrimSpace(line), file: _file}
+			}
+			return nil
+		})
+	}
+	egroup.Wait()
+	close(lineq)
 
 	<-done
 

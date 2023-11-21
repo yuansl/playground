@@ -23,6 +23,7 @@ import (
 
 	"github.com/qbox/net-deftones/clients/sinkv2"
 
+	titan "github.com/yuansl/playground/clients/titannetwork"
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker/robotsinker"
 	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu/titannetwork"
 	"github.com/yuansl/playground/logger"
@@ -116,12 +117,12 @@ func main() {
 			util.Fatal("aggregate error:", err)
 		}
 	case "download":
-		taiwucli := titannetwork.NewClient(
-			titannetwork.WithCredential("qiniu", []byte("a5c90e5370c80067a2ac78aab1badb90")),
-			titannetwork.WithToken("386BD183"),
-			titannetwork.WithVersion(_version),
+		titancli := titan.NewClient(
+			titan.WithCredential("qiniu", []byte("a5c90e5370c80067a2ac78aab1badb90")),
+			titan.WithToken("386BD183"),
+			titan.WithVersion(_version),
 		)
-		downloadlogs(ctx, _domain, _begin, _end, _outputdir, taiwucli)
+		downloadlogs(ctx, _domain, _begin, _end, _outputdir, titannetwork.NewTaiwuService(titancli))
 	default:
 		usage()
 	}

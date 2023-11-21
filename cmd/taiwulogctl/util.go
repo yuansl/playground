@@ -16,8 +16,8 @@ import (
 	netutil "github.com/qbox/net-deftones/util"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yuansl/playground/clients/titannetwork"
 	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu"
-	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu/titannetwork"
 	"github.com/yuansl/playground/logger"
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/oss/kodo"
