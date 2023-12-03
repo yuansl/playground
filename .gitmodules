@@ -1,0 +1,3 @@
+[submodule "c/inotify"]
+	path = c/inotify
+	url = git@github.com:yuansl/inotify.git
