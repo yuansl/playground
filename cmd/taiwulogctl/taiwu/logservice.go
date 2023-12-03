@@ -9,6 +9,6 @@ type Link struct {
 	Url string
 }
 
-type TaiwuService interface {
+type LogService interface {
 	LogLink(ctx context.Context, domain string, timestamp time.Time) ([]Link, error)
 }

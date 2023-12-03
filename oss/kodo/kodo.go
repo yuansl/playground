@@ -42,6 +42,11 @@ type storageService struct {
 	linkdomain    string
 }
 
+// Delete implements oss.ObjectStorageService.
+func (*storageService) Delete(ctx context.Context, bucket string, key string) error {
+	panic("unimplemented")
+}
+
 var _ oss.ObjectStorageService = (*storageService)(nil)
 
 type UrlOption util.Option

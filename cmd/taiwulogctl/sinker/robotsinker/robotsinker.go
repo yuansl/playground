@@ -58,19 +58,19 @@ func (sinker *robotsinker) Sink(ctx context.Context, stats []TrafficStat) error 
 		return bandwidths
 	}
 	for groupBy, stats := range perDayTraffics {
-		var points []fusionrobot.RawDayTrafficTidb
+		var points []sinkv2.TrafficStat
 
 		for i := 0; i < len(stats); i++ {
 			bandwidths := shuffle(&stats[i])
 
-			points = append(points, fusionrobot.RawDayTrafficTidb{
+			points = append(points, sinkv2.TrafficStat{
 				Domain:     groupBy.Domain,
 				Day:        groupBy.Timestamp.Format(time.DateOnly),
-				Region:     fusion.GeoCoverChina,
-				SourceType: fusionrobot.SourceType("LOG"),
-				DataType:   fusionrobot.DataTypePDNBandwidth,
-				CDN:        fusion.CDNProvider("pdntaiwu"),
-				Data:       bandwidths,
+				Region:     string(fusion.GeoCoverChina),
+				SourceType: fusionrobot.SourceTypeLog.String(),
+				DataType:   int64(fusionrobot.DataTypePDNBandwidth),
+				CDN:        "pdntaiwu",
+				Bandwidths: bandwidths,
 			})
 		}
 

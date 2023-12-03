@@ -38,8 +38,8 @@ func (srv *taiwuService) LogLink(ctx context.Context, domain string, timestamp t
 	}
 }
 
-var _ taiwu.TaiwuService = (*taiwuService)(nil)
+var _ taiwu.LogService = (*taiwuService)(nil)
 
-func NewTaiwuService(c *titannetwork.Client) taiwu.TaiwuService {
+func NewTaiwuService(c *titannetwork.Client) taiwu.LogService {
 	return &taiwuService{Client: c}
 }

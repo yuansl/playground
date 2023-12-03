@@ -60,7 +60,7 @@ func download(ctx context.Context, url string, saveas io.Writer) error {
 	return err
 }
 
-func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, taiwu taiwu.TaiwuService) {
+func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, taiwu taiwu.LogService) {
 	egroup, ctx := errgroup.WithContext(ctx)
 
 	for datetime := begin; datetime.Before(end); datetime = datetime.Add(5 * time.Minute) {
@@ -81,8 +81,6 @@ func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outp
 
 			egroup.Go(func() error {
 				log := logger.FromContext(ctx)
-
-				log.Infof("downloading %q ...\n", _link)
 
 				filename := path.Join(outputdir, fmt.Sprintf("/%s_%s-%04d.json", domain, _datetime.Format("200601021504"), _i))
 				fp, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0644)
