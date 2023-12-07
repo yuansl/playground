@@ -1,5 +1,6 @@
 SHELL=/bin/bash
-CFLAGS=-std=gnu2x -g -Wall -Wextra
+CC = gcc -std=gnu2x
+CFLAGS= -g -Wall -Wextra -fPIC
 
-some:
+some: main.o
 	$(CC) $(CFLAGS) -o some main.c 

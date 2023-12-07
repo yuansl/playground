@@ -15,11 +15,12 @@ import (
 )
 
 var (
-	_domain      string
-	_begin       time.Time
-	_end         time.Time
-	_cdn         string
-	_granularity string
+	_domain         string
+	_begin          time.Time
+	_end            time.Time
+	_cdn            string
+	_granularity    string
+	_grpcServerAddr string
 )
 
 func parseCmdArgs() {
@@ -28,11 +29,12 @@ func parseCmdArgs() {
 	flag.TextVar(&_end, "end", time.Time{}, "specify end time (in RFC3339 format)")
 	flag.StringVar(&_cdn, "cdn", "qiniucdn", "specify cdn provider name")
 	flag.StringVar(&_granularity, "g", "5min", "specify granularity")
+	flag.StringVar(&_grpcServerAddr, "addr", "localhost:80", "specify fscdn grpc server address")
 	flag.Parse()
 }
 
 func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []string, cdn string, g types.Granularity) {
-	srv, err := statfscdn.NewCdnStatService("localhost:18131")
+	srv, err := statfscdn.NewCdnStatService(_grpcServerAddr)
 	if err != nil {
 		util.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []str
 		}
 	}
 	for _, it := range res {
-		fmt.Printf("Metric: '%v', domain='%s', region='%v', timeseries=%v\n", it.Metric, it.Domain, it.Region, it.Timeseries)
+		fmt.Printf("Metric: '%v', domain='%s', region='%v', timeseries=%v\n", it.DataType, it.Domain, it.GeoCover, it.BandWidth)
 	}
 }
 

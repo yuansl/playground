@@ -97,4 +97,4 @@ require (
 	xorm.io/core v0.7.2-0.20190928055935-90aeac8d08eb // indirect
 )
 
-replace github.com/qbox/net-deftones => ../qbox/net-deftones
+replace github.com/qbox/net-deftones => ../../../src/qbox/net-deftones

@@ -1,0 +1,36 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=gnu2x",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-fPIC",
+      "-c",
+      "-o",
+      "main.o",
+      "main.c"
+    ],
+    "directory": "/home/yuansl/src/playground/c",
+    "file": "/home/yuansl/src/playground/c/main.c",
+    "output": "/home/yuansl/src/playground/c/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-std=gnu2x",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-fPIC",
+      "-o",
+      "some",
+      "main.c"
+    ],
+    "directory": "/home/yuansl/src/playground/c",
+    "file": "/home/yuansl/src/playground/c/main.c",
+    "output": "/home/yuansl/src/playground/c/some"
+  }
+]
