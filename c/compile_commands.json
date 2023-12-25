@@ -1,12 +1,12 @@
 [
   {
     "arguments": [
-      "/usr/bin/gcc",
+      "/usr/local/bin/gcc-13",
       "-std=gnu2x",
       "-g",
+      "-O2",
       "-Wall",
       "-Wextra",
-      "-fPIC",
       "-c",
       "-o",
       "main.o",
@@ -18,19 +18,36 @@
   },
   {
     "arguments": [
-      "/usr/bin/gcc",
-      "-c",
+      "/usr/local/bin/gcc-13",
       "-std=gnu2x",
       "-g",
+      "-O2",
       "-Wall",
       "-Wextra",
-      "-fPIC",
+      "-c",
       "-o",
-      "some",
-      "main.c"
+      "slice.o",
+      "slice.c"
     ],
     "directory": "/home/yuansl/src/playground/c",
-    "file": "/home/yuansl/src/playground/c/main.c",
-    "output": "/home/yuansl/src/playground/c/some"
+    "file": "/home/yuansl/src/playground/c/slice.c",
+    "output": "/home/yuansl/src/playground/c/slice.o"
+  },
+  {
+    "arguments": [
+      "/usr/local/bin/gcc-13",
+      "-std=gnu2x",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "stringbuffer.o",
+      "stringbuffer.c"
+    ],
+    "directory": "/home/yuansl/src/playground/c",
+    "file": "/home/yuansl/src/playground/c/stringbuffer.c",
+    "output": "/home/yuansl/src/playground/c/stringbuffer.o"
   }
 ]

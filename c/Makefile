@@ -1,6 +1,13 @@
 SHELL=/bin/bash
-CC = gcc -std=gnu2x
-CFLAGS= -g -Wall -Wextra -fPIC
+CC = gcc-13 -std=gnu2x
+CFLAGS = -g -O2 -Wall -Wextra -fno-strict-aliasing
 
-some: main.o
-	$(CC) $(CFLAGS) -o some main.c 
+OBJS = main.o
+OBJS += slice.o
+OBJS += stringbuffer.o
+OBJS += any.o
+
+some: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS)
+clean:
+	$(RM) some $(OBJS)
