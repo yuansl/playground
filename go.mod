@@ -6,10 +6,12 @@ require (
 	github.com/Comcast/go-leaderelection v0.0.0-20211210163058-1d7a4eade3f5
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/go-zookeeper/zk v1.0.2
+	github.com/godaner/awdb-golang v0.0.0-20230327050545-2904112c8a45
 	github.com/golang/mock v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0
 	github.com/hazelcast/hazelcast-go-client v1.4.0
 	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.23.9+incompatible
+	github.com/ipipdotnet/ipdb-go v1.3.3
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/json-iterator/go v1.1.12
 	github.com/parquet-go/parquet-go v0.0.0-20230713212203-3d3ee2af9ab7
@@ -31,6 +33,7 @@ require (
 	go.uber.org/ratelimit v0.3.0
 	golang.org/x/net v0.18.0
 	golang.org/x/sync v0.3.0
+	golang.org/x/sys v0.14.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20231016165738-49dd2c1f3d0b
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
@@ -45,6 +48,7 @@ require (
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/confluentinc/confluent-kafka-go/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
@@ -86,7 +90,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.19.0 // indirect
 	golang.org/x/crypto v0.15.0 // indirect
 	golang.org/x/oauth2 v0.12.0 // indirect
-	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/api v0.128.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
@@ -97,4 +100,4 @@ require (
 	xorm.io/core v0.7.2-0.20190928055935-90aeac8d08eb // indirect
 )
 
-replace github.com/qbox/net-deftones => ../../../src/qbox/net-deftones
+replace github.com/qbox/net-deftones => ../qbox/net-deftones

@@ -21,15 +21,16 @@ const (
 )
 
 var (
-	_accessKey = _ACCESS_KEY_DEFAULT
-	_secretKey = _SECRET_KEY_DEFAULT
-	_bucket    string
-	_prefix    string
-	_limit     int
-	_filename  string
-	_key       string
-	_expiry    time.Duration
-	_output    string
+	_accessKey  = _ACCESS_KEY_DEFAULT
+	_secretKey  = _SECRET_KEY_DEFAULT
+	_bucket     string
+	_prefix     string
+	_limit      int
+	_filename   string
+	_key        string
+	_expiry     time.Duration
+	_output     string
+	_linkdomain string
 )
 
 func init() {
@@ -46,6 +47,7 @@ func parseCmdArgs(args []string) {
 		panic("BUG: args must not be empty")
 	}
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
+	flags.StringVar(&_linkdomain, "link", "http://pybwef48y.bkt.clouddn.com", "specify cdn domain of the download link")
 	flags.StringVar(&_bucket, "bucket", _KODO_BUCKET_DEFAULT, "specify the kodo bucket")
 	flags.StringVar(&_prefix, "prefix", _KODO_FILE_KEY_PREFIX_DEFAULT, "specify prefix of a object file")
 	flags.IntVar(&_limit, "limit", 5, "list <limit> files at most")
@@ -80,7 +82,7 @@ func main() {
 
 	parseCmdArgs(os.Args[1:])
 
-	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey))
+	storage := kodo.NewStorageService(kodo.WithCredential(_accessKey, _secretKey), kodo.WithLinkDomain(_linkdomain))
 	ctx := util.InitSignalHandler(context.TODO())
 
 	switch action := os.Args[1]; action {

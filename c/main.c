@@ -1,7 +1,16 @@
 #include <inttypes.h>
 #include <sys/cdefs.h>
 #define _GNU_SOURCE
+<<<<<<< Updated upstream
 #include <math.h>
+=======
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <assert.h>
+>>>>>>> Stashed changes
 
 #include "util.h"
 #include "slice.h"
@@ -10,11 +19,171 @@
 
 #define SLICE_SIZE_MAX 128
 
+<<<<<<< Updated upstream
 #define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a[0])))
 
 [[maybe_unused]] static void test_stringbuffer(void)
 {
 	stringbuffer_t *array = create_buffer(SLICE_SIZE_MAX);
+=======
+_Noreturn static inline void _fatal(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+
+	exit(1);
+}
+
+#define fatal(...)                                                            \
+	do {                                                                  \
+		fprintf(stderr, "%s:%s:%d fatal error: ", __FILE__, __func__, \
+			__LINE__);                                            \
+		_fatal(__VA_ARGS__);                                          \
+	} while (false)
+
+typedef unsigned char byte;
+
+typedef struct slice {
+	size_t cap;
+	size_t size;
+	byte data[];
+} slice_t;
+
+static slice_t *slice_create(size_t cap)
+{
+	slice_t *buf = malloc(sizeof(struct slice) + cap);
+	assert(buf != NULL);
+	buf->cap = cap;
+	buf->size = 0;
+	return buf;
+}
+
+static void slice_destroy(slice_t *slice)
+{
+	free(slice);
+}
+
+static inline size_t slice_available(struct slice *slice)
+{
+	return slice->cap - slice->size;
+}
+
+int slice_append(struct slice *slice, const byte *bytes)
+{
+	size_t len = strlen((const char *)bytes);
+
+	if (len > slice_available(slice)) {
+		return ENOSPACE;
+	}
+	memcpy(slice->data, bytes, len);
+	slice->size += len;
+
+	return 0;
+}
+
+byte *slice_bytes(struct slice *slice, int at, size_t nbytes)
+{
+	static byte buf[BUFSIZ];
+
+	if (slice->size == 0 || at < 0 || at >= (int)slice->size) {
+		return NULL;
+	}
+	if (slice->size > sizeof(buf)) {
+		fatal("BUG: sizeof(buf) too small, maybe you should grow it");
+	}
+	memcpy(buf, slice->data + at, nbytes);
+
+	return buf;
+}
+
+typedef struct {
+	slice_t *buf;		 /* buffer */
+	const char *description; /* description */
+	size_t w_off;		 /* write offset */
+	size_t r_off;		 /* read offset */
+} stringbuffer_t;
+
+stringbuffer_t *create_buffer(size_t cap)
+{
+	stringbuffer_t *array = calloc(1, sizeof(*array));
+
+	assert(array != NULL);
+
+	array->buf = slice_create(cap);
+
+	return array;
+}
+
+size_t buffer_available(stringbuffer_t *array)
+{
+	return slice_available(array->buf);
+}
+
+int buffer_append(stringbuffer_t *array, const byte *msg)
+{
+	int result;
+
+	do {
+		if ((result = slice_append(array->buf, msg)) < 0) {
+			if (result == ENOSPACE) {
+				int newcap = array->buf->cap * 2;
+				array->buf = realloc(array->buf, newcap);
+				assert(array != NULL);
+				assert(array->buf != NULL);
+				array->buf->cap = newcap;
+				continue;
+			}
+			return result;
+		}
+	} while (false);
+
+	array->w_off += strlen((const char *)msg);
+
+	return 0;
+}
+
+int buffer_read(stringbuffer_t *array, byte buf[], size_t size)
+{
+	int result;
+	byte *tmp;
+
+	result = buffer_available(array);
+
+	if (result < 0) {
+		return result;
+	} else if ((int)size > result) {
+		return EUNAVAILABLE;
+	}
+	tmp = slice_bytes(array->buf, array->r_off, size);
+	if (tmp) {
+		memcpy(buf, tmp, size);
+		array->r_off += size;
+	}
+
+	return 0;
+}
+
+byte *buffer_bytes(stringbuffer_t *array)
+{
+	return slice_bytes(array->buf, array->r_off,
+			   array->w_off - array->r_off);
+}
+
+void buffer_destroy(stringbuffer_t *array)
+{
+	slice_destroy(array->buf);
+	free(array);
+}
+
+enum { STATE = 1L << 32 };
+
+int main(void)
+{
+	stringbuffer_t *array = create_buffer(ARRAY_SIZE);
+>>>>>>> Stashed changes
 	const char *greet = "你好"; /* ,world */
 
 	if (buffer_append(array, (const byte *)greet) < 0) {
@@ -33,10 +202,18 @@
 }
 typedef const char *string;
 
+<<<<<<< Updated upstream
 struct iterator {
 	void *begin, *end;
 	void *pos;
 };
+=======
+	constexpr int SIZE = 100;
+
+	struct {
+		/* empty */
+	} empty_structs[SIZE];
+>>>>>>> Stashed changes
 
 #define ITERATOR_INITIALIZER(a)                                  \
 	{                                                        \
