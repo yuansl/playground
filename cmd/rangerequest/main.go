@@ -2,95 +2,92 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httputil"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/yuansl/playground/util"
 )
 
-var fatal = util.Fatal
+//go:generate stringer -type MetricType -linecomment
+type MetricType int
 
-type hookTransport struct{}
+const (
+	MetricBandwidth    MetricType = iota // bandwidth
+	MetricSrcBandwidth                   // srcbandwidth
+	MetricQps                            // qps
+)
 
-// RoundTrip implements http.RoundTripper.
-func (t *hookTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	data, err := httputil.DumpRequest(req, true)
-	fmt.Printf("Request(raw): '%s'\n", data)
-
-	res, err := http.DefaultTransport.RoundTrip(req)
-
-	data, err = httputil.DumpResponse(res, false)
-	fmt.Printf("Response(raw): '%s'\n", data)
-
-	return res, err
+func (m MetricType) IsValid() bool {
+	return MetricBandwidth <= m && m <= MetricQps
 }
 
-var _ http.RoundTripper = (*hookTransport)(nil)
-
-func NewTransport() http.RoundTripper {
-	return &hookTransport{}
-}
-
-type metadata map[string]any
-
-type Option util.Option
-
-type options struct {
-	headers http.Header
-}
-
-func WithHeader(header http.Header) Option {
-	return util.OptionFunc(func(opt any) {
-		opt.(*options).headers = header
-	})
-}
-
-func send(ctx context.Context, client *http.Client, URL, method string, opts ...Option) metadata {
-	var options options
-
-	for _, opt := range opts {
-		opt.Apply(&options)
-	}
-	req, err := http.NewRequest(method, URL, nil)
-	if err != nil {
-		fatal("http.NewRequest:", err)
-	}
-	for k, v := range options.headers {
-		for _, it := range v {
-			req.Header.Add(k, it)
+func MetricOf(metric string) MetricType {
+	for m := MetricBandwidth; m <= MetricQps; m++ {
+		if m.String() == metric {
+			return m
 		}
 	}
-	res, err := client.Do(req)
-	if err != nil {
-		fatal("http.DefaultClient.Do:", err)
-	}
-	defer res.Body.Close()
-
-	io.Copy(io.Discard, res.Body)
-
-	var meta = make(metadata)
-
-	for k, v := range res.Header {
-		if len(v) > 0 {
-			meta[k] = v[0]
-		}
-	}
-	return meta
+	return -1
 }
+
+type RangeRequest interface {
+	GetTimeRangeTraffic(ctx context.Context, domains []string, cdn string, metric MetricType, begin, end time.Time)
+}
+
+var options struct {
+	domains []string
+	cdn     string
+	metric  string
+	begin   time.Time
+	end     time.Time
+}
+
+func parseCmdOptions() {
+	var domain, begin, end string
+	var err error
+
+	flag.StringVar(&domain, "domains", "", "specify domains, seperate by comma")
+	flag.StringVar(&options.cdn, "cdn", "", "specify cdn (e.g.: qiniudcdn)")
+	flag.StringVar(&options.metric, "metric", "bandwidth", "specify metric. one of (metric, srcbandwidth, qps)")
+	flag.StringVar(&begin, "begin", "", "begin time(in format ccyy-mm-dd)")
+	flag.StringVar(&end, "end", "", "end time (in ccyy-mm-dd)")
+	flag.Parse()
+
+	if domain != "" {
+		options.domains = strings.Split(domain, ",")
+	}
+
+	options.begin, err = time.ParseInLocation(time.DateOnly, begin, time.Local)
+	if err != nil {
+		util.Fatal(err)
+	}
+	options.end, err = time.ParseInLocation(time.DateOnly, end, time.Local)
+	if err != nil {
+		util.Fatal(err)
+	}
+}
+
+const BATCH_SIZE_MAX = 2000
 
 func main() {
-	URL := "http://ria8j59xt.hd-bkt.clouddn.com/dnlivestream/2023-12-03-01/qn-pcdngw.cdn.huya.com/qn-pcdngw.cdn.huya.com_0_part-00043-e390249e-0d4a-46c2-a914-dabc77c283d7.c000.json.gz.gz?e=1707635374&token=V5BwWT7pVm1S_EVHt2bfg4qOS-1VDLXCo1k6MqN1:-Q5PyFoj4xBxcA3wKYcZBRGaWVU="
-	client := &http.Client{Transport: NewTransport()}
+	parseCmdOptions()
 
-	ctx := context.TODO()
+	if len(options.domains) == 0 || options.cdn == "" {
+		fmt.Fprintf(os.Stderr, "Usage: %s -domains <domains> ", os.Args[0])
+		os.Exit(0)
+	}
 
-	meta := send(ctx, client, URL, http.MethodHead)
+	var rangerequest RangeRequest
 
-	if rangebytes := meta["Accept-Ranges"]; strings.TrimSpace(rangebytes.(string)) == "bytes" {
-		meta = send(ctx, client, URL, http.MethodGet, WithHeader(http.Header{"Range": []string{"bytes=2605711360-"}}))
-		fmt.Printf("Response=%v\n", meta)
+	for i := 0; i < len(options.domains); i += BATCH_SIZE_MAX {
+		j := i + BATCH_SIZE_MAX
+		if j > len(options.domains) {
+			j = len(options.domains)
+		}
+
+		rangerequest.GetTimeRangeTraffic(context.TODO(), options.domains[i:j], options.cdn, MetricOf(options.metric), options.begin, options.end)
 	}
 }

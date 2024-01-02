@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"time"
+
+	netutil "github.com/qbox/net-deftones/util"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/util"
 )
@@ -13,7 +17,7 @@ import (
 const _TRAFFIC_SERVICE_ENDPOINT = "http://deftonestraffic.fusion.internal.qiniu.io"
 
 type RetryUploader interface {
-	Retry(ctx context.Context, domains []string, cdn string, start, end time.Time) error
+	Retry(ctx context.Context, domains []string, cdn string, start, end time.Time, manual bool) error
 }
 
 func beginingOfday(t time.Time) time.Time {
@@ -67,12 +71,40 @@ func (*trafficService) fetchDomainTrafficOnce(ctx context.Context, domain, cdn, 
 // Traffic implements CdnTrafficStatistics.
 func (srv *trafficService) Traffic(ctx context.Context, domains []string, cdn, metric string, begin time.Time, end time.Time) ([]TrafficStat, error) {
 	var stats []TrafficStat
+	var statsq = make(chan []TrafficStat)
 
-	for _, domain := range domains {
-		stats0, err := srv.fetchDomainTrafficOnce(ctx, domain, cdn, metric, begin, end)
-		if err != nil {
-			return nil, err
+	go func() {
+		defer close(statsq)
+
+		wg, ctx := errgroup.WithContext(ctx)
+		wg.SetLimit(runtime.NumCPU())
+
+		metrics := []string{metric}
+		if metric == "flow" {
+			metrics = append(metrics, "302flow")
 		}
+		for _, domain := range domains {
+			_domain := domain
+			for _, m := range metrics {
+				_metric := m
+				wg.Go(func() error {
+					var stats []TrafficStat
+					var err error
+					netutil.WithRetry(ctx, func() error {
+						stats, err = srv.fetchDomainTrafficOnce(ctx, _domain, cdn, _metric, begin, end)
+						return err
+					})
+					if err != nil {
+						return err
+					}
+					statsq <- stats
+					return nil
+				})
+			}
+		}
+		wg.Wait()
+	}()
+	for stats0 := range statsq {
 		stats = append(stats, stats0...)
 	}
 	return stats, nil
@@ -83,7 +115,7 @@ type logrepairer struct {
 	historicalRepairer RetryUploader
 }
 
-func (srv *logrepairer) Repair(ctx context.Context, domain, cdn string, timestamp time.Time) error {
+func (srv *logrepairer) Repair(ctx context.Context, domain, cdn string, timestamp time.Time, manual bool) error {
 	var repairer RetryUploader
 
 	if timestamp.Sub(time.Now()).Abs() < 48*time.Hour {
@@ -91,7 +123,9 @@ func (srv *logrepairer) Repair(ctx context.Context, domain, cdn string, timestam
 	} else {
 		repairer = srv.historicalRepairer
 	}
-	return repairer.Retry(ctx, []string{domain}, cdn, timestamp, timestamp.Add(1*time.Hour))
+	return netutil.WithRetry(ctx, func() error {
+		return repairer.Retry(ctx, []string{domain}, cdn, timestamp, timestamp.Add(1*time.Hour), manual)
+	})
 }
 
 func NewLogRepair(realtime, historical RetryUploader) LogRepairer {

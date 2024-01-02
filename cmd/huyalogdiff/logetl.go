@@ -24,15 +24,18 @@ type logetlClient struct {
 }
 
 // Retry implements LogetlService.
-func (client *logetlClient) Retry(ctx context.Context, domains []string, cdn string, start time.Time, end time.Time) error {
+func (client *logetlClient) Retry(ctx context.Context, domains []string, cdn string, start time.Time, end time.Time, manual bool) error {
 	var body bytes.Buffer
 
-	json.NewEncoder(&body).Encode(map[string]any{
+	if cdn == "" {
+		cdn = "all"
+	}
+	_ = json.NewEncoder(&body).Encode(map[string]any{
 		"cdn":          cdn,
 		"domains":      domains,
 		"start":        start.Local().Format(_LOGETL_TIMEFORMAT),
 		"end":          end.Local().Format(_LOGETL_TIMEFORMAT),
-		"manual":       true,
+		"manual":       manual,
 		"force":        true,
 		"ignoreOnline": true,
 	})

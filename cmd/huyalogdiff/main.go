@@ -21,7 +21,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	fusionutil "github.com/qbox/net-deftones/util"
 	"github.com/yuansl/playground/util"
 )
 
@@ -52,7 +51,7 @@ type CdnTrafficSerivce interface {
 }
 
 type LogRepairer interface {
-	Repair(ctx context.Context, domain, cdn string, timestamp time.Time) error
+	Repair(ctx context.Context, domain, cdn string, timestamp time.Time, manual bool) error
 }
 
 type Stat struct {
@@ -72,6 +71,7 @@ var _options struct {
 	verbose     bool
 	etlendpoint string
 	delta       float64
+	strict      bool
 }
 
 const _DELTA_WATERMARK = 1e-4
@@ -80,17 +80,24 @@ func parseCmdArgs() {
 	flag.TextVar(&_options.begin, "begin", time.Time{}, "begin time(in RFC3339)")
 	flag.TextVar(&_options.end, "end", time.Time{}, "end time (in RFC3339)")
 	flag.StringVar(&_options.domains, "domains", "", "specify domains(seperated by comma)")
-	flag.StringVar(&_options.cdn, "cdn", "dnlivestream", "cdn provider name")
+	flag.StringVar(&_options.cdn, "cdn", "", "cdn provider name")
 	flag.StringVar(&_options.metric, "metric", "flow", "specify traffic metric(one of 302liveflow|flow)")
 	flag.BoolVar(&_options.repair, "repair", false, "whether repair if there are delta between upload and traffic bytes")
 	flag.BoolVar(&_options.verbose, "v", false, "verbose")
+	flag.BoolVar(&_options.strict, "strict", false, "strict mode")
 	flag.StringVar(&_options.etlendpoint, "endpoint", _LOGETL_ENDPOINT_DEFAULT, "specify logetl service endpoint")
 	flag.Float64Var(&_options.delta, "delta", _DELTA_WATERMARK, "delta in percent")
 	flag.Parse()
 }
 
+type DomainTimestamp struct {
+	domain    string
+	timestamp time.Time
+}
+
 func stat(ctx context.Context, domains []string, trafficSrv CdnTrafficSerivce, uploaderSrv CdnlogUploader, repairer LogRepairer) {
-	perTimeStat := make(map[time.Time]Stat)
+	groupbyDomainTime := make(map[DomainTimestamp]Stat)
+	groupbyHour := make(map[DomainTimestamp]struct{})
 	statq := make(chan *Stat)
 
 	go func() {
@@ -131,31 +138,50 @@ func stat(ctx context.Context, domains []string, trafficSrv CdnTrafficSerivce, u
 		wg.Wait()
 	}()
 	for it := range statq {
-		old := perTimeStat[it.Time.UTC()]
-		old.UploadBytes += it.UploadBytes
-		old.TrafficBytes += it.TrafficBytes
-		perTimeStat[it.Time.UTC()] = old
-	}
-	var perHour = make(map[time.Time]struct{})
-	for ts, stat := range perTimeStat {
-		if _options.verbose {
-			fmt.Printf("timestamp: %s, traffic bytes: %15d, upload bytes: %15d\n", ts, stat.TrafficBytes, stat.UploadBytes)
-		}
+		key := DomainTimestamp{domain: it.Domain, timestamp: it.Time.UTC()}
+		accumulate := groupbyDomainTime[key]
 
-		if stat.UploadBytes == 0 || math.Abs(float64(stat.TrafficBytes-stat.UploadBytes))/float64(stat.UploadBytes) > _options.delta {
-			fmt.Fprintf(os.Stderr, "WARNING: traffic doesn't match at %s: upload %15d(bytes), traffic: %15d(bytes), delta: %.3f%%\n", ts.Local(), stat.UploadBytes, stat.TrafficBytes, math.Abs(float64(stat.TrafficBytes-stat.UploadBytes))/float64(stat.UploadBytes)*100)
+		accumulate.UploadBytes += it.UploadBytes
+		accumulate.TrafficBytes += it.TrafficBytes
+
+		groupbyDomainTime[key] = accumulate
+	}
+
+	for key, stat := range groupbyDomainTime {
+		delta := float64(stat.TrafficBytes-stat.UploadBytes) / float64(stat.UploadBytes)
+		absdelta := delta
+		if _options.strict {
+			absdelta = math.Abs(delta)
+		}
+		if _options.verbose {
+			fmt.Printf("timestamp: %s, domain: %s, traffic bytes: %15d, upload bytes: %15d, delta: %.3f%%\n",
+				key.timestamp.Local(), key.domain, stat.TrafficBytes, stat.UploadBytes, delta*100)
+		}
+		if stat.TrafficBytes == 0 {
+			continue
+		}
+		if stat.UploadBytes == 0 || absdelta > _options.delta {
+			fmt.Fprintf(os.Stderr, "WARNING: traffic mismatch: %s: %50s, upload %15d(bytes), traffic: %15d(bytes), delta: %.3f%%\n",
+				key.timestamp.Local(), key.domain, stat.UploadBytes, stat.TrafficBytes, delta*100)
 
 			if _options.repair {
-				y, m, d := ts.Date()
-				perHour[time.Date(y, m, d, ts.Hour(), 0, 0, 0, ts.Location())] = struct{}{}
+				y, m, d := key.timestamp.Date()
+				key := DomainTimestamp{
+					domain:    key.domain,
+					timestamp: time.Date(y, m, d, key.timestamp.Hour(), 0, 0, 0, key.timestamp.Location()),
+				}
+				groupbyHour[key] = struct{}{}
 			}
 		}
 	}
 	if _options.repair {
-		for hour := range perHour {
-			if err := fusionutil.WithRetry(ctx, func() error {
-				return repairer.Repair(ctx, domains[0], _options.cdn, hour)
-			}); err != nil {
+		manual := true
+		if _options.cdn == "dnlivestream" {
+			manual = false
+		}
+		for key := range groupbyHour {
+			fmt.Printf("Repairing domain %s at %s\n", key.domain, key.timestamp)
+			if err := repairer.Repair(ctx, key.domain, _options.cdn, key.timestamp, manual); err != nil {
 				util.Fatal("repair:", err)
 			}
 		}
@@ -169,13 +195,17 @@ func main() {
 		os.Exit(1)
 	}
 	if _options.begin.IsZero() {
-		_options.begin = time.Now()
+		_options.begin = time.Now().Add(-4 * time.Hour)
 	}
 	if _options.end.IsZero() {
 		_options.end = time.Now()
 	}
 	if _options.end.After(time.Now()) {
 		_options.end = time.Now()
+	}
+	if _options.begin.After(_options.end) {
+		fmt.Fprintf(os.Stderr, "invalid time range: [%s, %s]", _options.begin, _options.end)
+		os.Exit(2)
 	}
 	domains := strings.Split(_options.domains, ",")
 	uploaderSrv := NewCdnlogUploader()

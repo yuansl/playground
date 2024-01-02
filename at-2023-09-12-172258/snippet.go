@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/yuansl/playground/util"
 )
@@ -67,6 +68,8 @@ func mkstemp() {
 
 func main() {
 	mkstemp()
+
+	time.Sleep(2 * time.Second)
 
 	runtime.GC()
 }

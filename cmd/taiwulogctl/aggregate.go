@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"golang.org/x/sync/errgroup"
@@ -19,10 +21,13 @@ import (
 	"github.com/yuansl/playground/util"
 )
 
+const BUFSIZE = 1 << 20
+
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type TaiwuRawLog struct {
 	Did    string
+	Domain string
 	Events []struct {
 		Vvid       string
 		Url        string
@@ -71,11 +76,20 @@ const (
 	RegionChina = sinker.RegionChina
 )
 
+var _logFilenameRegexp = regexp.MustCompile(`[[:alnum:]\.-_]+_`)
+
+func extraDomainFrom(filename string) string {
+	match := _logFilenameRegexp.Find(unsafe.Slice(unsafe.StringData(filename), len(filename)))
+	_off := strings.LastIndex(unsafe.String(unsafe.SliceData(match), len(match)), "_")
+	match = match[:_off]
+	return unsafe.String(unsafe.SliceData(match), len(match))
+}
+
 func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker TrafficSinker) error {
 	var perTimestampP2P = make(map[GroupKey]int64)
 	var lineq = make(chan *logline, _concurrency)
 	var taiwuRawLogchan = make(chan *TaiwuRawLog, _concurrency)
-	var taiwuStdLogchan = make(chan *TaiwuStandardLog, _concurrency)
+	var taiwuStdLogschan = make(chan []TaiwuStandardLog, _concurrency)
 	var done = make(chan bool)
 	var linesCounter atomic.Int32
 
@@ -89,45 +103,44 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 	}()
 
 	go func() {
-		for stdlog := range taiwuStdLogchan {
-			eventTime := time.Unix(stdlog.Timestamp/300_000*300_000/1000, 0)
-			if eventTime.Before(w.Begin) || eventTime.Compare(w.End) >= 0 {
-				continue
+		for stdlogs := range taiwuStdLogschan {
+			for _, stdlog := range stdlogs {
+				eventTime := time.Unix(stdlog.Timestamp/300_000*300_000/1000, 0)
+				if eventTime.Before(w.Begin) || eventTime.Compare(w.End) >= 0 {
+					continue
+				}
+				groupby := GroupKey{
+					Domain:    stdlog.Domain,
+					Timestamp: eventTime,
+				}
+				perTimestampP2P[groupby] += stdlog.P2p
 			}
-			groupby := GroupKey{
-				Domain:    stdlog.Domain,
-				Timestamp: eventTime,
-			}
-			perTimestampP2P[groupby] += stdlog.P2p
 		}
 		done <- true
 	}()
 
 	go func() {
-		defer close(taiwuStdLogchan)
+		defer close(taiwuStdLogschan)
 
 		egroup, _ := errgroup.WithContext(ctx)
 		for i := 0; i < _concurrency; i++ {
 			egroup.Go(func() error {
 				for rawlog := range taiwuRawLogchan {
-					for i := 0; i < len(rawlog.Events); i++ {
-						event := &rawlog.Events[i]
-						u, err := url.Parse(event.Url)
-						if err != nil {
-							log.Warnf("WARN: url.Parse(%q) error: %v, skipped\n", event.Url, err)
-							continue
-						}
+					for _, event := range rawlog.Events {
+						var logs = make([]TaiwuStandardLog, 0, len(event.Timeseries))
+
 						for _, it := range event.Timeseries {
-							taiwuStdLogchan <- &TaiwuStandardLog{
-								Domain:    u.Host,
+							logs = append(logs, TaiwuStandardLog{
+								Domain:    rawlog.Domain,
 								Url:       event.Url,
 								Type:      event.Type,
 								Timestamp: it.Timestamp,
 								Period:    it.Period,
 								P2p:       it.P2p,
 								Cdn:       it.Cdn,
-							}
+							})
 						}
+						taiwuStdLogschan <- logs
 					}
 				}
 				return nil
@@ -138,7 +151,6 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 
 	go func() {
 		defer close(taiwuRawLogchan)
-
 		egroup, ctx := errgroup.WithContext(ctx)
 
 		for i := 0; i < _concurrency; i++ {
@@ -147,10 +159,12 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 					linesCounter.Add(+1)
 
 					var taiwulog TaiwuRawLog
+
 					if err := json.Unmarshal(line.bytes, &taiwulog); err != nil {
 						logger.FromContext(ctx).Infof("WARN: json.Unmarshal(content=`%s`) error: %v (file=%s, skip ...)\n", line.bytes, err, line.file)
 						return nil
 					}
+					taiwulog.Domain = extraDomainFrom(line.file)
 
 					taiwuRawLogchan <- &taiwulog
 				}
@@ -173,7 +187,7 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 
 			logger.FromContext(ctx).Infof("aggregating file %s ...\n", _file)
 
-			for r := bufio.NewReader(fp); ; {
+			for r := bufio.NewReaderSize(fp, BUFSIZE); ; {
 				line, err := r.ReadBytes('\n')
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
