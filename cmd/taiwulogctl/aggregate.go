@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -82,7 +83,7 @@ func extraDomainFrom(filename string) string {
 	match := _logFilenameRegexp.Find(unsafe.Slice(unsafe.StringData(filename), len(filename)))
 	_off := strings.LastIndex(unsafe.String(unsafe.SliceData(match), len(match)), "_")
 	match = match[:_off]
-	return unsafe.String(unsafe.SliceData(match), len(match))
+	return filepath.Base(unsafe.String(unsafe.SliceData(match), len(match)))
 }
 
 func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker TrafficSinker) error {

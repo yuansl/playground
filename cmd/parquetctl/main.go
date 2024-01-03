@@ -124,6 +124,6 @@ func writeFile(filename string) {
 
 func main() {
 	parseCmdOptions()
-	writeFile(_options.filename)
+	// writeFile(_options.filename)
 	readParquetFile(_options.filename)
 }
