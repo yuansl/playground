@@ -16,7 +16,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yuansl/playground/logger"
+	"github.com/qbox/net-deftones/logger"
+
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/util"
 )

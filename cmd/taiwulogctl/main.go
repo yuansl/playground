@@ -11,22 +11,28 @@
 package main
 
 import (
+	"compress/flate"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"path"
 	"regexp"
 	"runtime"
 	"time"
 
 	"github.com/qbox/net-deftones/clients/sinkv2"
+	"github.com/qbox/net-deftones/logger"
+	netutil "github.com/qbox/net-deftones/util"
+	"golang.org/x/sync/errgroup"
 
 	titan "github.com/yuansl/playground/clients/titannetwork"
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker/robotsinker"
+	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu"
 	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu/titannetwork"
-	"github.com/yuansl/playground/logger"
 	"github.com/yuansl/playground/util"
 )
 
@@ -79,9 +85,59 @@ func parseCmdArgs() {
 	flag.Parse()
 }
 
+func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, taiwu taiwu.LogService) error {
+	egroup, ctx := errgroup.WithContext(ctx)
+	defer egroup.Wait()
+
+	for datetime := begin; datetime.Before(end); datetime = datetime.Add(5 * time.Minute) {
+		_datetime := datetime
+		links, err := taiwu.LogLinks(ctx, domain, datetime, "386BD183")
+		if err != nil {
+			switch {
+			case errors.Is(err, titan.ErrInvalid):
+				return fmt.Errorf("taiwu.LogLink: %w", err)
+			default:
+				return fmt.Errorf("loglink(domain=%s,datetime=%v): %v", domain, datetime, err)
+			}
+		}
+		for i, link := range links {
+			_i := i
+			_link := link
+
+			egroup.Go(func() error {
+				filename := path.Join(outputdir, fmt.Sprintf("/%s_%s-%04d.json", domain, _datetime.Format("200601021504"), _i))
+				fp, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0644)
+				if err != nil {
+					return fmt.Errorf("os.OpenFile: %w", err)
+				}
+				defer fp.Close()
+
+				return netutil.WithRetry(ctx, func() error {
+					if err := download(ctx, _link.Url, fp); err != nil {
+						switch {
+						case errors.Is(err, titan.ErrInvalid):
+							panic("BUG: you shoud review your request becuase of the error(INVALID): " + err.Error())
+						default:
+							var cause flate.CorruptInputError
+							if errors.As(err, &cause) {
+								logger.FromContext(ctx).Warnf("%w: download %q error: %v, skip ...\n", cause, _link.Url, err)
+								return nil
+							}
+							return err
+						}
+					}
+					logger.FromContext(ctx).Infof("saved %q as %q \n", _link.Url, filename)
+					return nil
+				})
+			})
+		}
+	}
+	return nil
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s -mode <download|stat> -begin <RFC3339 time> `, os.Args[0])
-	os.Exit(0)
+	os.Exit(1)
 }
 
 func main() {
@@ -113,16 +169,21 @@ func main() {
 		} else {
 			trafficSrv = NewNopTrafficSinker()
 		}
-		if err := aggregate(ctx, flag.Args(), ProcessWindow{_begin, _end}, trafficSrv); err != nil {
-			util.Fatal("aggregate error:", err)
+
+		err := stat(ctx, flag.Args(), ProcessWindow{_begin, _end}, trafficSrv)
+		if err != nil {
+			util.Fatal("stat error:", err)
 		}
 	case "download":
 		titancli := titan.NewClient(
 			titan.WithCredential("qiniu", []byte("a5c90e5370c80067a2ac78aab1badb90")),
-			titan.WithToken("386BD183"),
-			titan.WithVersion(_version),
 		)
-		downloadlogs(ctx, _domain, _begin, _end, _outputdir, titannetwork.NewTaiwuService(titancli))
+		taiwusrv := titannetwork.NewTaiwuService(titancli, titannetwork.WithVersion(_version))
+
+		err := downloadlogs(ctx, _domain, _begin, _end, _outputdir, taiwusrv)
+		if err != nil {
+			util.Fatal("downloadlogs error:", err)
+		}
 	default:
 		usage()
 	}

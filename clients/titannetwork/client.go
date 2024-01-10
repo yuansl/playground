@@ -28,7 +28,6 @@ type Client struct {
 	*http.Client
 	endpoint string
 	token    string
-	Version  int
 }
 
 type request struct {
@@ -77,6 +76,7 @@ func (client *Client) send(ctx context.Context, req *request, res any) error {
 type LogUrlRequest struct {
 	Domain    string
 	Timestamp time.Time
+	Token     string
 }
 
 type LogUrlResponseV2 struct {
@@ -89,7 +89,7 @@ func (client *Client) BossFlowLogUrlV2(ctx context.Context, req *LogUrlRequest) 
 	payload := url.Values{}
 	payload.Add("domain", req.Domain)
 	payload.Add("time", req.Timestamp.Format("200601021504"))
-	payload.Add("token", client.token)
+	payload.Add("token", req.Token)
 
 	var res LogUrlResponseV2
 
@@ -163,10 +163,8 @@ type Option util.Option
 
 type clientOptions struct {
 	endpoint string
-	version  int
 	username string
 	secret   []byte
-	token    string
 }
 
 func WithCredential(username string, secret []byte) Option {
@@ -178,14 +176,6 @@ func WithCredential(username string, secret []byte) Option {
 
 func WithEndpoint(endpoint string) Option {
 	return util.OptionFunc(func(opt any) { opt.(*clientOptions).endpoint = endpoint })
-}
-
-func WithToken(token string) Option {
-	return util.OptionFunc(func(opt any) { opt.(*clientOptions).token = token })
-}
-
-func WithVersion(version int) Option {
-	return util.OptionFunc(func(opt any) { opt.(*clientOptions).version = version })
 }
 
 func NewClient(opts ...Option) *Client {
@@ -203,7 +193,5 @@ func NewClient(opts ...Option) *Client {
 			secret:   options.secret,
 		}},
 		endpoint: options.endpoint,
-		token:    options.token,
-		Version:  options.version,
 	}
 }

@@ -9,10 +9,7 @@ import (
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/yuansl/playground/apidemo/api/rpc/proto"
-	"github.com/yuansl/playground/logger"
-	trace1 "github.com/yuansl/playground/trace"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/logger"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/ratelimit"
@@ -22,6 +19,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/yuansl/playground/apidemo/api/rpc/proto"
+	trace1 "github.com/yuansl/playground/trace"
+	"github.com/yuansl/playground/util"
 )
 
 const _UID_DEFAULT = 999999

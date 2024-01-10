@@ -17,10 +17,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/qbox/net-deftones/logger"
 	"github.com/qbox/net-deftones/util/codec"
 	"github.com/redis/go-redis/v9"
-
-	"github.com/yuansl/playground/logger"
 )
 
 var (

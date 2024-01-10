@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/yuansl/playground/logger"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/logger"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/yuansl/playground/util"
 )
 
 // DomainRetry represents mongo collection 'log-validation.domain_retry'

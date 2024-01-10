@@ -10,5 +10,5 @@ type Link struct {
 }
 
 type LogService interface {
-	LogLink(ctx context.Context, domain string, timestamp time.Time) ([]Link, error)
+	LogLinks(ctx context.Context, domain string, timestamp time.Time, token ...string) ([]Link, error)
 }

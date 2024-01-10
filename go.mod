@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/Comcast/go-leaderelection v0.0.0-20211210163058-1d7a4eade3f5
+	github.com/colinmarc/hdfs v1.1.3
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/go-zookeeper/zk v1.0.2
 	github.com/godaner/awdb-golang v0.0.0-20230327050545-2904112c8a45
@@ -20,7 +21,7 @@ require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/qbox/net-deftones v1.2.0
 	github.com/qiniu/go-sdk/v7 v7.17.0
-	github.com/rabbitmq/amqp091-go v1.8.1
+	github.com/rabbitmq/amqp091-go v1.9.0
 	github.com/redis/go-redis/v9 v9.0.5
 	github.com/stretchr/testify v1.8.4
 	github.com/yaa110/goterator v0.3.0
@@ -37,7 +38,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20231016165738-49dd2c1f3d0b
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
-	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22
 )
 
 require (

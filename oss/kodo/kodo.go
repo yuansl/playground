@@ -35,8 +35,8 @@ var (
 	ErrInvalid = errors.New("kodo: invalid argument")
 )
 
-// storageService implements ObjectStorageService.
-type storageService struct {
+// StorageService implements ObjectStorageService.
+type StorageService struct {
 	credentials   *auth.Credentials
 	uploader      *storage.ResumeUploader
 	bucketManager *storage.BucketManager
@@ -44,11 +44,11 @@ type storageService struct {
 }
 
 // Delete implements oss.ObjectStorageService.
-func (*storageService) Delete(ctx context.Context, bucket string, key string) error {
+func (*StorageService) Delete(ctx context.Context, bucket string, key string) error {
 	panic("unimplemented")
 }
 
-var _ oss.ObjectStorageService = (*storageService)(nil)
+var _ oss.ObjectStorageService = (*StorageService)(nil)
 
 type UrlOption util.Option
 
@@ -62,7 +62,7 @@ func WithPrivateUrlExpiry(expiry time.Duration) UrlOption {
 	})
 }
 
-func (kodo *storageService) UrlOfKey(ctx context.Context, bucket, key string, opts ...UrlOption) string {
+func (kodo *StorageService) UrlOfKey(ctx context.Context, bucket, key string, opts ...UrlOption) string {
 	var options privateUrlOptions
 	for _, op := range opts {
 		op.Apply(&options)
@@ -122,7 +122,7 @@ func doOnceHttpRequest(ctx context.Context, url string, opts ...DownloadOption) 
 	return io.ReadAll(io.LimitReader(res.Body, _KODO_RESPONSE_BODY_SIZE_MAX))
 }
 
-func (kodo *storageService) Download(ctx context.Context, bucket, key string) ([]byte, error) {
+func (kodo *StorageService) Download(ctx context.Context, bucket, key string) ([]byte, error) {
 	span := trace.SpanFromContext(ctx)
 
 	url := kodo.UrlOfKey(ctx, bucket, key)
@@ -219,7 +219,7 @@ func WithListPrefix(prefix string) oss.ListOption {
 }
 
 // List implements ObjectStorageService.
-func (kodo *storageService) List(ctx context.Context, bucket string, opts ...oss.ListOption) ([]oss.File, error) {
+func (kodo *StorageService) List(ctx context.Context, bucket string, opts ...oss.ListOption) ([]oss.File, error) {
 	var files []oss.File
 	var options listOptions
 
@@ -263,7 +263,7 @@ endit:
 }
 
 // Stat implements ObjectStorageService.
-func (*storageService) Stat(ctx context.Context, name string) {
+func (*StorageService) Stat(ctx context.Context, name string) {
 	panic("unimplemented")
 }
 
@@ -309,7 +309,7 @@ func WithNotify(notify func(blkId, blkSize, offset int)) oss.UploadOption {
 	})
 }
 
-func (kodo *storageService) GetUploadToken(bucket string, expiry time.Duration) string {
+func (kodo *StorageService) GetUploadToken(bucket string, expiry time.Duration) string {
 	policy := storage.PutPolicy{Scope: bucket}
 
 	if expiry > 0 {
@@ -320,7 +320,7 @@ func (kodo *storageService) GetUploadToken(bucket string, expiry time.Duration) 
 }
 
 // Upload implements ObjectStorageService.
-func (kodo *storageService) Upload(ctx context.Context, bucket string, reader io.Reader, opts ...oss.UploadOption) (*oss.UploadResult, error) {
+func (kodo *StorageService) Upload(ctx context.Context, bucket string, reader io.Reader, opts ...oss.UploadOption) (*oss.UploadResult, error) {
 	var options uploadOptions
 
 	for _, op := range opts {
@@ -370,7 +370,7 @@ func WithLinkDomain(linkdomain string) ServiceOption {
 	})
 }
 
-func NewStorageService(opts ...ServiceOption) *storageService {
+func NewStorageService(opts ...ServiceOption) *StorageService {
 	var options serviceOptions
 
 	for _, op := range opts {
@@ -380,7 +380,7 @@ func NewStorageService(opts ...ServiceOption) *storageService {
 		options.linkdomain = _KODO_SERVICE_ENDPOINT_DEFAULT
 	}
 	credentials := auth.New(options.accessKey, options.secretKey)
-	return &storageService{
+	return &StorageService{
 		credentials:   credentials,
 		bucketManager: storage.NewBucketManager(credentials, nil),
 		uploader:      storage.NewResumeUploader(&storage.Config{}),

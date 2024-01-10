@@ -7,7 +7,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/yuansl/playground/logger"
+	"github.com/qbox/net-deftones/logger"
 )
 
 type taiwuTransport struct {
@@ -39,7 +39,7 @@ func (taiwu *taiwuTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil {
 		return nil, err
 	}
-	data, _ = httputil.DumpResponse(res, res.StatusCode >= http.StatusInternalServerError)
+	data, _ = httputil.DumpResponse(res, true) //FIXME: res.StatusCode >= http.StatusBadRequest)
 	logger.New().Infof("http response(raw): '%s'\n", bytes.Replace(data, []byte("\r\n"), []byte("..."), -1))
 
 	return res, nil

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yuansl/playground/logger"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/logger"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	"github.com/yuansl/playground/util"
 )
 
 type EtlTask struct {

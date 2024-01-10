@@ -24,11 +24,14 @@ type fusionlogRepository struct {
 // GetLink implements LinkRepository.
 func (db *fusionlogRepository) GetLinks(ctx context.Context, domain string, begin time.Time, end time.Time, business Business) ([]LogLink, error) {
 	var links []LogLink
-	it, err := db.Find(ctx, bson.M{
-		"domain":   domain,
+	query := bson.M{
 		"hour":     bson.M{"$gte": begin.Format(_LOG_TIME_FORMAT), "$lt": end.Format(_LOG_TIME_FORMAT)},
 		"business": business.String(),
-	})
+	}
+	if domain != "" {
+		query["domain"] = domain
+	}
+	it, err := db.Find(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("db.Find: %v", err)
 	}

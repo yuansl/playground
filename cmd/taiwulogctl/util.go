@@ -2,26 +2,17 @@ package main
 
 import (
 	"bufio"
-	"compress/flate"
 	"compress/gzip"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"time"
 
-	netutil "github.com/qbox/net-deftones/util"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/yuansl/playground/clients/titannetwork"
-	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu"
-	"github.com/yuansl/playground/logger"
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/oss/kodo"
-	"github.com/yuansl/playground/util"
 )
 
 const (
@@ -58,62 +49,6 @@ func download(ctx context.Context, url string, saveas io.Writer) error {
 	}
 	_, err = io.Copy(saveas, gz)
 	return err
-}
-
-func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, taiwu taiwu.LogService) {
-	egroup, ctx := errgroup.WithContext(ctx)
-
-	for datetime := begin; datetime.Before(end); datetime = datetime.Add(5 * time.Minute) {
-		_datetime := datetime
-		links, err := taiwu.LogLink(ctx, domain, datetime)
-		if err != nil {
-			switch {
-			case errors.Is(err, titannetwork.ErrInvalid):
-				logger.FromContext(ctx).Warnf("taiwu.LogLink error: %v\n", err)
-				return
-			default:
-				util.Fatal("loglink(domain=%s,datetime=%v): %v\n", domain, datetime, err)
-			}
-		}
-		for i, link := range links {
-			_i := i
-			_link := link
-
-			egroup.Go(func() error {
-				log := logger.FromContext(ctx)
-
-				filename := path.Join(outputdir, fmt.Sprintf("/%s_%s-%04d.json", domain, _datetime.Format("200601021504"), _i))
-				fp, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err != nil {
-					util.Fatal(err)
-				}
-				defer fp.Close()
-
-				if err := netutil.WithRetry(ctx, func() error {
-					if err := download(ctx, _link.Url, fp); err != nil {
-						switch {
-						case errors.Is(err, titannetwork.ErrInvalid):
-							panic("BUG: you shoud review your request becuase of the error: " + err.Error())
-						default:
-							var cause flate.CorruptInputError
-							if errors.As(err, &cause) {
-								logger.FromContext(ctx).Warnf("download %q error: %v, skip ...\n", _link.Url, err)
-								return nil
-							}
-							return err
-						}
-					}
-					return nil
-				}); err != nil {
-					util.Fatal("download error:", err)
-				}
-
-				log.Infof("saved %q as %q \n", _link.Url, filename)
-				return nil
-			})
-		}
-	}
-	egroup.Wait()
 }
 
 type pattern struct {

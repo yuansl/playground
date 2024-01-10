@@ -15,10 +15,10 @@ import (
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/qbox/net-deftones/logger"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker"
-	"github.com/yuansl/playground/logger"
 	"github.com/yuansl/playground/util"
 )
 
@@ -79,14 +79,14 @@ const (
 
 var _logFilenameRegexp = regexp.MustCompile(`[[:alnum:]\.-_]+_`)
 
-func extraDomainFrom(filename string) string {
+func extractDomainFrom(filename string) string {
 	match := _logFilenameRegexp.Find(unsafe.Slice(unsafe.StringData(filename), len(filename)))
 	_off := strings.LastIndex(unsafe.String(unsafe.SliceData(match), len(match)), "_")
 	match = match[:_off]
 	return filepath.Base(unsafe.String(unsafe.SliceData(match), len(match)))
 }
 
-func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker TrafficSinker) error {
+func stat(ctx context.Context, filenames []string, w ProcessWindow, sinker TrafficSinker) error {
 	var perTimestampP2P = make(map[GroupKey]int64)
 	var lineq = make(chan *logline, _concurrency)
 	var taiwuRawLogchan = make(chan *TaiwuRawLog, _concurrency)
@@ -165,7 +165,7 @@ func aggregate(ctx context.Context, filenames []string, w ProcessWindow, sinker 
 						logger.FromContext(ctx).Infof("WARN: json.Unmarshal(content=`%s`) error: %v (file=%s, skip ...)\n", line.bytes, err, line.file)
 						return nil
 					}
-					taiwulog.Domain = extraDomainFrom(line.file)
+					taiwulog.Domain = extractDomainFrom(line.file)
 
 					taiwuRawLogchan <- &taiwulog
 				}

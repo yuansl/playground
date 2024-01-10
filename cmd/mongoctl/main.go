@@ -16,7 +16,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/yuansl/playground/logger"
+	"github.com/qbox/net-deftones/logger"
 	"golang.org/x/sync/errgroup"
 )
 

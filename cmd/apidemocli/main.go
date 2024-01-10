@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yuansl/playground/logger"
+	"github.com/qbox/net-deftones/logger"
 	"github.com/yuansl/playground/trace"
 	"github.com/yuansl/playground/util"
 )

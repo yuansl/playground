@@ -8,10 +8,10 @@ import (
 
 	"github.com/qbox/net-deftones/clients/sinkv2"
 	"github.com/qbox/net-deftones/fusionrobot"
+	"github.com/qbox/net-deftones/logger"
 	"github.com/qbox/net-deftones/staging/qiniu.com/cdnapi/fusion.v2/fusion"
 
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker"
-	"github.com/yuansl/playground/logger"
 )
 
 const _NR_POINTS_PER_DAY = 288
