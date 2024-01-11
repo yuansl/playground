@@ -1,16 +1,12 @@
-#include <inttypes.h>
-#include <sys/cdefs.h>
 #define _GNU_SOURCE
-<<<<<<< Updated upstream
+#include <inttypes.h>
 #include <math.h>
-=======
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
->>>>>>> Stashed changes
 
 #include "util.h"
 #include "slice.h"
@@ -19,14 +15,11 @@
 
 #define SLICE_SIZE_MAX 128
 
-<<<<<<< Updated upstream
+constexpr int STRING_BUFSIZE = 10;
+
 #define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a[0])))
 
-[[maybe_unused]] static void test_stringbuffer(void)
-{
-	stringbuffer_t *array = create_buffer(SLICE_SIZE_MAX);
-=======
-_Noreturn static inline void _fatal(const char *fmt, ...)
+[[noreturn]] static inline void _fatal(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -37,74 +30,9 @@ _Noreturn static inline void _fatal(const char *fmt, ...)
 	exit(1);
 }
 
-#define fatal(...)                                                            \
-	do {                                                                  \
-		fprintf(stderr, "%s:%s:%d fatal error: ", __FILE__, __func__, \
-			__LINE__);                                            \
-		_fatal(__VA_ARGS__);                                          \
-	} while (false)
+#define MAYBE_UNUSED [[maybe_unused]]
 
 typedef unsigned char byte;
-
-typedef struct slice {
-	size_t cap;
-	size_t size;
-	byte data[];
-} slice_t;
-
-static slice_t *slice_create(size_t cap)
-{
-	slice_t *buf = malloc(sizeof(struct slice) + cap);
-	assert(buf != NULL);
-	buf->cap = cap;
-	buf->size = 0;
-	return buf;
-}
-
-static void slice_destroy(slice_t *slice)
-{
-	free(slice);
-}
-
-static inline size_t slice_available(struct slice *slice)
-{
-	return slice->cap - slice->size;
-}
-
-int slice_append(struct slice *slice, const byte *bytes)
-{
-	size_t len = strlen((const char *)bytes);
-
-	if (len > slice_available(slice)) {
-		return ENOSPACE;
-	}
-	memcpy(slice->data, bytes, len);
-	slice->size += len;
-
-	return 0;
-}
-
-byte *slice_bytes(struct slice *slice, int at, size_t nbytes)
-{
-	static byte buf[BUFSIZ];
-
-	if (slice->size == 0 || at < 0 || at >= (int)slice->size) {
-		return NULL;
-	}
-	if (slice->size > sizeof(buf)) {
-		fatal("BUG: sizeof(buf) too small, maybe you should grow it");
-	}
-	memcpy(buf, slice->data + at, nbytes);
-
-	return buf;
-}
-
-typedef struct {
-	slice_t *buf;		 /* buffer */
-	const char *description; /* description */
-	size_t w_off;		 /* write offset */
-	size_t r_off;		 /* read offset */
-} stringbuffer_t;
 
 stringbuffer_t *create_buffer(size_t cap)
 {
@@ -178,42 +106,16 @@ void buffer_destroy(stringbuffer_t *array)
 	free(array);
 }
 
-enum { STATE = 1L << 32 };
-
-int main(void)
-{
-	stringbuffer_t *array = create_buffer(ARRAY_SIZE);
->>>>>>> Stashed changes
-	const char *greet = "你好"; /* ,world */
-
-	if (buffer_append(array, (const byte *)greet) < 0) {
-		fatal("BUG: buffer_append(%s):", greet);
-	}
-
-	printf("msg='%s'\n", buffer_bytes(array));
-
-	if (buffer_append(array, (const byte *)"this is another message") < 0) {
-		fatal("buffer_append error: out of memory");
-	}
-
-	printf("after append new message, now msg='%s'\n", buffer_bytes(array));
-
-	buffer_destroy(array);
-}
 typedef const char *string;
 
-<<<<<<< Updated upstream
 struct iterator {
 	void *begin, *end;
 	void *pos;
 };
-=======
-	constexpr int SIZE = 100;
 
-	struct {
-		/* empty */
-	} empty_structs[SIZE];
->>>>>>> Stashed changes
+struct {
+	/* empty */
+} empty_structs[STRING_BUFSIZE];
 
 #define ITERATOR_INITIALIZER(a)                                  \
 	{                                                        \
@@ -290,63 +192,22 @@ void matrix_fun(const int N, const float x[N][N])
 	printf("x[0][0]=%f\n", x[0][15]);
 }
 
-#define SIZE 16
-
 int main(void)
 {
-	float *y[SIZE];
+	stringbuffer_t *array = create_buffer(STRING_BUFSIZE);
+	const char *greet = "你好"; /* ,world */
 
-	y[0] = malloc(SIZE * sizeof(*y[0]));
-	y[0][0] = 3.14;
-	y[0][15] = 5.28;
-	float x[SIZE][SIZE] = { { [0] = 3.14, [15] = 5.28 } };
-	(void)x;
-	matrix_fun(SIZE, y);
+	if (buffer_append(array, (const byte *)greet) < 0) {
+		fatal("BUG: buffer_append(%s):", greet);
+	}
 
-	{
-		int num = 10;
-		// Function Call
-		int result = foo(&num, (long *)&num);
-		// Print result
-		printf("result %d\n", result);
+	printf("msg='%s'\n", buffer_bytes(array));
+
+	if (buffer_append(array, (const byte *)"this is another message") < 0) {
+		fatal("buffer_append error: out of memory");
 	}
-	{
-		int x = change_a((double *)&a, &a);
-		printf("x = %d, a = %d\n", x, a);
-	}
-	{
-		union Some {
-			long error;
-			double result;
-		} u;
-		u.result = 10;
-		printf("\u4E2D\u56FD u.error=%ld\n", u.error);
-	}
-	{
-		printf("sizeof(true)=%zd,sizeof(bool)=%zd,sizeof(false)=%zd\n",
-		       sizeof(true), sizeof(bool), sizeof(false));
-	}
-	/*
-	 * int a[] = { 3, 8, 8, 9, 34, 838 };
-	 * string b[] = { "whatever", "your", "want" };
-	 * struct {
-	 * 	void *slice;
-	 * 	void *end;
-	 * 	int size;
-	 * } cases[] = { { a, a + ARRAY_SIZE(a), ARRAY_SIZE(a) },
-	 * 	      { b, b + ARRAY_SIZE(b), ARRAY_SIZE(b) } };
-	 * for (int i = 0; i < (int)ARRAY_SIZE(cases); i++) {
-	 * 	struct iterator iter = {
-	 * 		.begin = cases[i].slice,
-	 * 		.end = cases[i].slice + cases[i].size,
-	 * 		.pos = cases[i].slice,
-	 * 	};
-	 *
-	 * 	for (int j = 0; j < cases[i].size; j++) {
-	 * 		string x = next(&iter, string);
-	 * 		printf("a[%d] = %s\n", j, x);
-	 * 	}
-	 * }
-	 */
-	return 0;
+
+	printf("after append new message, now msg='%s'\n", buffer_bytes(array));
+
+	buffer_destroy(array);
 }
