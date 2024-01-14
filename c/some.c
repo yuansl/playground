@@ -91,6 +91,31 @@ static int initialize_connection(const char *domain, const char *service)
 	return sockfd;
 }
 
+struct some {
+	int n;
+	struct {
+		int code;
+		char *msg;
+	} error;
+	char *msg;
+};
+
+[[maybe_unused]] constexpr int NR_FLOATS = 2;
+
+[[maybe_unused]] static const double *numbers = (double[]){ 1, 2, 3, 4 };
+
+struct some do_something(int N, bool yes_or_no, const char buf[static 1],
+			 long double numbers[static N])
+{
+	typeof(yes_or_no) x = { !yes_or_no };
+	auto y = 3.8f;
+	(void)y;
+	int z[10] = { [0 ... 2] = 0, [3 ... 9] = 1 };
+	(void)z;
+	printf("buf = %s\n", buf);
+	return (struct some){ .n = x, .error.code = 128 };
+}
+
 static void send_http_request(int connfd, const char *host)
 {
 	char buf[BUFSIZ];
@@ -114,7 +139,7 @@ static void send_http_request(int connfd, const char *host)
 }
 
 typedef struct {
-} *json_t;
+} * json_t;
 typedef json_t json_value;
 
 json_t json_parse(const char *s);
@@ -136,8 +161,8 @@ int json_put(json_t, const char *key, const json_value value);
 }
 
 struct sdshdr8 {
-	uint8_t len;	     /* used */
-	uint8_t alloc;	     /* excluding the header and null terminator */
+	uint8_t len; /* used */
+	uint8_t alloc; /* excluding the header and null terminator */
 	unsigned char flags; /* 3 lsb of type, 5 unused bits */
 	char buf[];
 } __attribute__((__packed__));
@@ -311,7 +336,7 @@ void *inc_some(void *)
 
 #define NR_THREADS 2
 
-int main(void)
+void test_pthreads(void)
 {
 	pthread_t threads[NR_THREADS];
 
@@ -321,5 +346,99 @@ int main(void)
 	for (int i = 0; i < NR_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
+}
+
+struct point {
+	double x, y;
+};
+
+union image {
+};
+
+static void do_something2(union image img[static 1], struct point *point)
+{
+	(void)img;
+	printf("point={x=%.2f,y=%.2f}\n", point->x, point->y);
+}
+
+#define do_something2(img, ...) \
+	do_something2(img, &(struct point){ .x = 3, __VA_ARGS__ })
+
+struct rectangle {
+	struct point center;
+	double width, height;
+};
+
+struct circle {
+	struct point center;
+	double r;
+};
+
+static void scale_rectange_1p(struct rectangle rec[static 1], double scale)
+{
+	rec->width *= scale;
+	rec->height *= scale;
+}
+
+static void scale_rectange_2p(struct rectangle rec[static 1], double h_scale,
+			      double w_scale)
+{
+	rec->width *= w_scale;
+	rec->height *= h_scale;
+}
+
+static void scale_circle(struct circle c[static 1], double scale)
+{
+	c->r *= scale;
+}
+
+/* clang-format off */
+
+#define __scale2p(obj, ...)				\
+	_Generic(obj,					\
+		 struct rectangle*:scale_rectange_2p	\
+                )(obj, __VA_ARGS__)
+
+#define __scale1p(obj, ...)				\
+	_Generic(obj,					\
+	         struct circle*:scale_circle,		\
+		 struct rectangle*:scale_rectange_1p	\
+                )(obj, __VA_ARGS__)
+
+#define __INVOKE_SCALE(_1,_2,_3,NAME,...) NAME 
+	
+#define scale(...) __INVOKE_SCALE(__VA_ARGS__, __scale2p, __scale1p)(__VA_ARGS__)
+
+/* clang-format on */
+
+struct array2 {
+	int size;
+	int cap;
+	char buf[];
+};
+
+int main(void)
+{
+	long double *numbers = calloc(3, sizeof(*numbers));
+	struct array2 x = (static struct array){ .buf = "hello, world" };
+
+	printf("sizeof(double[12]) = %zd\n", sizeof(double[12]));
+	(void)x;
+
+	for (int i = 0; i < 3; i++)
+		numbers[i] = rand() % 100;
+	do_something(3, true, "hello, world", numbers);
+
+	do_something2(&(union image){}, .x = 30, .y = 30);
+
+	struct rectangle r = { .height = 1, .width = 2 };
+	struct circle c = { .r = 5 };
+
+	scale(&r, 3.8, 3.5);
+	scale(&c, 4.2);
+
+	printf("rectange.height=%.2f,wigth=%.2f, circle.r=%.2f\n", r.height,
+	       r.width, c.r);
+
 	return 0;
 }
