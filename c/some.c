@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -20,7 +21,10 @@
 
 #define IPV4_DOT_FORM_MAX_LEN 16
 
-[[noreturn]] static inline void _fatal(const char *fmt, ...)
+#define __noreturn __attribute__((noreturn))
+#define __unused __attribute__((unused))
+
+static inline void __noreturn __nonnull((1)) _fatal(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -42,7 +46,7 @@
 		abort();                                             \
 	})
 
-static inline void inspect_sockaddr(struct sockaddr_in *inaddr)
+static inline void __nonnull((1)) inspect_sockaddr(struct sockaddr_in *inaddr)
 {
 	char ipbuf[IPV4_DOT_FORM_MAX_LEN];
 
@@ -51,7 +55,8 @@ static inline void inspect_sockaddr(struct sockaddr_in *inaddr)
 	printf("connect to %s:%d\n", ipbuf, ntohs(inaddr->sin_port));
 }
 
-static int do_connect(int sockfd, const char *domain, const char *service)
+static int __nonnull((2))
+	do_connect(int sockfd, const char *domain, const char *service)
 {
 	struct addrinfo *addrs;
 	bool found;
@@ -100,12 +105,12 @@ struct some {
 	char *msg;
 };
 
-[[maybe_unused]] constexpr int NR_FLOATS = 2;
+constexpr int NR_FLOATS __unused = 2;
 
-[[maybe_unused]] static const double *numbers = (double[]){ 1, 2, 3, 4 };
+static const double *numbers __unused = (double[]){ 1, 2, 3, 4 };
 
-struct some do_something(int N, bool yes_or_no, const char buf[static 1],
-			 long double numbers[static N])
+struct some do_something(int N, long double[static N], bool yes_or_no,
+			 const char buf[static 1])
 {
 	typeof(yes_or_no) x = { !yes_or_no };
 	auto y = 3.8f;
@@ -116,7 +121,7 @@ struct some do_something(int N, bool yes_or_no, const char buf[static 1],
 	return (struct some){ .n = x, .error.code = 128 };
 }
 
-static void send_http_request(int connfd, const char *host)
+static void send_http_request(int connfd, const char host[static 1])
 {
 	char buf[BUFSIZ];
 	ssize_t nbytes;
@@ -160,10 +165,12 @@ int json_put(json_t, const char *key, const json_value value);
 	close(connfd);
 }
 
+typedef unsigned char byte;
+
 struct sdshdr8 {
 	uint8_t len; /* used */
 	uint8_t alloc; /* excluding the header and null terminator */
-	unsigned char flags; /* 3 lsb of type, 5 unused bits */
+	byte flags; /* 3 lsb of type, 5 unused bits */
 	char buf[];
 } __attribute__((__packed__));
 
@@ -172,10 +179,10 @@ typedef struct sdshdr8 sdshdr_t;
 void test_sdshdr(void)
 {
 	sdshdr_t *shdr;
-	unsigned char *s;
+	byte *s;
 
 	shdr = malloc(sizeof(sdshdr_t) + 1);
-	s = (unsigned char *)shdr + sizeof(sdshdr_t);
+	s = (byte *)shdr + sizeof(sdshdr_t);
 	s[0] = '\0';
 	free(shdr);
 }
@@ -256,8 +263,11 @@ option_t with_age(int age)
 {
 	option_t opt = malloc(sizeof(struct option));
 
-	opt->apply = options_set_age;
-	opt->data = malloc(sizeof(age));
+	*opt = (struct option){
+		.apply = options_set_age,
+		.data = malloc(sizeof(age)),
+	};
+
 	*(int *)opt->data = age;
 
 	return opt;
@@ -274,7 +284,7 @@ option_t with_name(const char *name)
 	return opt;
 }
 
-void init_options(struct options *options, /* option_t opts */...)
+void init_options_internal(struct options *options, /* option_t opts */...)
 {
 	va_list ap;
 
@@ -290,6 +300,8 @@ void init_options(struct options *options, /* option_t opts */...)
 	va_end(ap);
 }
 
+#define init_options(opts, ...) init_options_internal(opts, __VA_ARGS__)
+
 void with_retry(int retry_max, int (*f)(void))
 {
 	int attempts = 0;
@@ -301,7 +313,7 @@ void with_retry(int retry_max, int (*f)(void))
 	} while (attempts <= retry_max);
 }
 
-[[maybe_unused]] static void test_options(void)
+static void __unused test_options(void)
 {
 	struct options options = {};
 
@@ -353,16 +365,17 @@ struct point {
 };
 
 union image {
+	double pixel;
 };
 
-static void do_something2(union image img[static 1], struct point *point)
+static void __nonnull((1, 2))
+	do_something2_internal(union image *, struct point *point)
 {
-	(void)img;
 	printf("point={x=%.2f,y=%.2f}\n", point->x, point->y);
 }
 
 #define do_something2(img, ...) \
-	do_something2(img, &(struct point){ .x = 3, __VA_ARGS__ })
+	do_something2_internal(img, &(struct point){ .x = 3, __VA_ARGS__ })
 
 struct rectangle {
 	struct point center;
@@ -374,20 +387,21 @@ struct circle {
 	double r;
 };
 
-static void scale_rectange_1p(struct rectangle rec[static 1], double scale)
+__nonnull((1)) static void scale_rectange_1p(struct rectangle *rec,
+					     double scale)
 {
 	rec->width *= scale;
 	rec->height *= scale;
 }
 
-static void scale_rectange_2p(struct rectangle rec[static 1], double h_scale,
-			      double w_scale)
+static void __nonnull((1))
+	scale_rectange_2p(struct rectangle *rec, double h_scale, double w_scale)
 {
 	rec->width *= w_scale;
 	rec->height *= h_scale;
 }
 
-static void scale_circle(struct circle c[static 1], double scale)
+static void __nonnull((1)) scale_circle(struct circle *c, double scale)
 {
 	c->r *= scale;
 }
@@ -417,17 +431,27 @@ struct array2 {
 	char buf[];
 };
 
+#define IMAGE(NAME, ...)    \
+	(union image)       \
+	{                   \
+		__VA_ARGS__ \
+	}
+
+constexpr int NR_NUMBERS = 10;
+
 int main(void)
 {
-	long double *numbers = calloc(3, sizeof(*numbers));
-	struct array2 x = (static struct array){ .buf = "hello, world" };
+	union image img = IMAGE(.pixel = 3);
+	(void)img;
+	long double *numbers = calloc(NR_NUMBERS, sizeof(*numbers));
+	struct array2 x = (static struct array2){ .buf = "hello, world" };
 
 	printf("sizeof(double[12]) = %zd\n", sizeof(double[12]));
 	(void)x;
 
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < NR_NUMBERS; i++)
 		numbers[i] = rand() % 100;
-	do_something(3, true, "hello, world", numbers);
+	do_something(3, numbers, true, "hello, world");
 
 	do_something2(&(union image){}, .x = 30, .y = 30);
 
