@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -20,7 +21,10 @@
 
 #define IPV4_DOT_FORM_MAX_LEN 16
 
-[[noreturn]] static inline void _fatal(const char *fmt, ...)
+#define __noreturn __attribute__((noreturn))
+#define __unused __attribute__((unused))
+
+static inline void __noreturn __nonnull((1)) _fatal(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -42,7 +46,7 @@
 		abort();                                             \
 	})
 
-static inline void inspect_sockaddr(struct sockaddr_in *inaddr)
+static inline void __nonnull((1)) inspect_sockaddr(struct sockaddr_in *inaddr)
 {
 	char ipbuf[IPV4_DOT_FORM_MAX_LEN];
 
@@ -51,7 +55,8 @@ static inline void inspect_sockaddr(struct sockaddr_in *inaddr)
 	printf("connect to %s:%d\n", ipbuf, ntohs(inaddr->sin_port));
 }
 
-static int do_connect(int sockfd, const char *domain, const char *service)
+static int __nonnull((2))
+	do_connect(int sockfd, const char *domain, const char *service)
 {
 	struct addrinfo *addrs;
 	bool found;
@@ -91,7 +96,32 @@ static int initialize_connection(const char *domain, const char *service)
 	return sockfd;
 }
 
-static void send_http_request(int connfd, const char *host)
+struct some {
+	int n;
+	struct {
+		int code;
+		char *msg;
+	} error;
+	char *msg;
+};
+
+constexpr int NR_FLOATS __unused = 2;
+
+static const double *numbers __unused = (double[]){ 1, 2, 3, 4 };
+
+struct some do_something(int N, long double[static N], bool yes_or_no,
+			 const char buf[static 1])
+{
+	typeof(yes_or_no) x = { !yes_or_no };
+	auto y = 3.8f;
+	(void)y;
+	int z[10] = { [0 ... 2] = 0, [3 ... 9] = 1 };
+	(void)z;
+	printf("buf = %s\n", buf);
+	return (struct some){ .n = x, .error.code = 128 };
+}
+
+static void send_http_request(int connfd, const char host[static 1])
 {
 	char buf[BUFSIZ];
 	ssize_t nbytes;
@@ -114,7 +144,7 @@ static void send_http_request(int connfd, const char *host)
 }
 
 typedef struct {
-} *json_t;
+} * json_t;
 typedef json_t json_value;
 
 json_t json_parse(const char *s);
@@ -135,10 +165,12 @@ int json_put(json_t, const char *key, const json_value value);
 	close(connfd);
 }
 
+typedef unsigned char byte;
+
 struct sdshdr8 {
-	uint8_t len;	     /* used */
-	uint8_t alloc;	     /* excluding the header and null terminator */
-	unsigned char flags; /* 3 lsb of type, 5 unused bits */
+	uint8_t len; /* used */
+	uint8_t alloc; /* excluding the header and null terminator */
+	byte flags; /* 3 lsb of type, 5 unused bits */
 	char buf[];
 } __attribute__((__packed__));
 
@@ -147,10 +179,10 @@ typedef struct sdshdr8 sdshdr_t;
 void test_sdshdr(void)
 {
 	sdshdr_t *shdr;
-	unsigned char *s;
+	byte *s;
 
 	shdr = malloc(sizeof(sdshdr_t) + 1);
-	s = (unsigned char *)shdr + sizeof(sdshdr_t);
+	s = (byte *)shdr + sizeof(sdshdr_t);
 	s[0] = '\0';
 	free(shdr);
 }
@@ -231,8 +263,11 @@ option_t with_age(int age)
 {
 	option_t opt = malloc(sizeof(struct option));
 
-	opt->apply = options_set_age;
-	opt->data = malloc(sizeof(age));
+	*opt = (struct option){
+		.apply = options_set_age,
+		.data = malloc(sizeof(age)),
+	};
+
 	*(int *)opt->data = age;
 
 	return opt;
@@ -249,7 +284,7 @@ option_t with_name(const char *name)
 	return opt;
 }
 
-void init_options(struct options *options, /* option_t opts */...)
+void init_options_internal(struct options *options, /* option_t opts */...)
 {
 	va_list ap;
 
@@ -265,6 +300,8 @@ void init_options(struct options *options, /* option_t opts */...)
 	va_end(ap);
 }
 
+#define init_options(opts, ...) init_options_internal(opts, __VA_ARGS__)
+
 void with_retry(int retry_max, int (*f)(void))
 {
 	int attempts = 0;
@@ -276,7 +313,7 @@ void with_retry(int retry_max, int (*f)(void))
 	} while (attempts <= retry_max);
 }
 
-[[maybe_unused]] static void test_options(void)
+static void __unused test_options(void)
 {
 	struct options options = {};
 
@@ -311,7 +348,7 @@ void *inc_some(void *)
 
 #define NR_THREADS 2
 
-int main(void)
+void test_pthreads(void)
 {
 	pthread_t threads[NR_THREADS];
 
@@ -321,5 +358,111 @@ int main(void)
 	for (int i = 0; i < NR_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
+}
+
+struct point {
+	double x, y;
+};
+
+union image {
+	double pixel;
+};
+
+static void __nonnull((1, 2))
+	do_something2_internal(union image *, struct point *point)
+{
+	printf("point={x=%.2f,y=%.2f}\n", point->x, point->y);
+}
+
+#define do_something2(img, ...) \
+	do_something2_internal(img, &(struct point){ .x = 3, __VA_ARGS__ })
+
+struct rectangle {
+	struct point center;
+	double width, height;
+};
+
+struct circle {
+	struct point center;
+	double r;
+};
+
+__nonnull((1)) static void scale_rectange_1p(struct rectangle *rec,
+					     double scale)
+{
+	rec->width *= scale;
+	rec->height *= scale;
+}
+
+static void __nonnull((1))
+	scale_rectange_2p(struct rectangle *rec, double h_scale, double w_scale)
+{
+	rec->width *= w_scale;
+	rec->height *= h_scale;
+}
+
+static void __nonnull((1)) scale_circle(struct circle *c, double scale)
+{
+	c->r *= scale;
+}
+
+/* clang-format off */
+
+#define __scale2p(obj, ...)				\
+	_Generic(obj,					\
+		 struct rectangle*:scale_rectange_2p	\
+                )(obj, __VA_ARGS__)
+
+#define __scale1p(obj, ...)				\
+	_Generic(obj,					\
+	         struct circle*:scale_circle,		\
+		 struct rectangle*:scale_rectange_1p	\
+                )(obj, __VA_ARGS__)
+
+#define __INVOKE_SCALE(_1,_2,_3,NAME,...) NAME 
+	
+#define scale(...) __INVOKE_SCALE(__VA_ARGS__, __scale2p, __scale1p)(__VA_ARGS__)
+
+/* clang-format on */
+
+struct array2 {
+	int size;
+	int cap;
+	char buf[];
+};
+
+#define IMAGE(NAME, ...)    \
+	(union image)       \
+	{                   \
+		__VA_ARGS__ \
+	}
+
+constexpr int NR_NUMBERS = 10;
+
+int main(void)
+{
+	union image img = IMAGE(.pixel = 3);
+	(void)img;
+	long double *numbers = calloc(NR_NUMBERS, sizeof(*numbers));
+	struct array2 x = (static struct array2){ .buf = "hello, world" };
+
+	printf("sizeof(double[12]) = %zd\n", sizeof(double[12]));
+	(void)x;
+
+	for (int i = 0; i < NR_NUMBERS; i++)
+		numbers[i] = rand() % 100;
+	do_something(3, numbers, true, "hello, world");
+
+	do_something2(&(union image){}, .x = 30, .y = 30);
+
+	struct rectangle r = { .height = 1, .width = 2 };
+	struct circle c = { .r = 5 };
+
+	scale(&r, 3.8, 3.5);
+	scale(&c, 4.2);
+
+	printf("rectange.height=%.2f,wigth=%.2f, circle.r=%.2f\n", r.height,
+	       r.width, c.r);
+
 	return 0;
 }
