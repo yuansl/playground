@@ -1,13 +1,11 @@
-#include <bits/time.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <time.h>
 
-#define SLOT_SIZE 18
+#include <pthread.h>
 
-typedef intmax_t timestamp_t;
+#define NUM_THREADS 4
+#define SLOT_SIZE 240
 
 static inline char *now(void)
 {
@@ -19,103 +17,128 @@ static inline char *now(void)
 	return buf;
 }
 
+#define print(...)                                                 \
+	({                                                         \
+		printf("%s: thread %ld: ", now(), pthread_self()); \
+		printf(__VA_ARGS__);                               \
+	})
+
 struct thread_context {
 	pthread_mutex_t *mutex;
-	pthread_cond_t *condvar;
+	pthread_cond_t *wait_producer;
+	pthread_cond_t *wait_consumer;
+	int emptyslots;
+	int size;
 	int head, tail;
 	int slots[SLOT_SIZE];
 	bool done;
 };
 
-#define print(...)                     \
-	({                             \
-		printf("%s: ", now()); \
-		printf(__VA_ARGS__);   \
-	})
-
-void *pthread_routine(void *arg)
-{
-	struct thread_context *ctx = arg;
-
-	print("thread %ld running...\n", pthread_self());
-
-	while (true) {
-		pthread_mutex_lock(ctx->mutex);
-		while (ctx->head == ctx->tail && !ctx->done) {
-			print("thread %ld waiting, head=%d, tail=%d, done=%s\n",
-			      pthread_self(), ctx->head, ctx->tail,
-			      ctx->done ? "true" : "false");
-
-			pthread_cond_wait(ctx->condvar, ctx->mutex);
-		}
-		if (ctx->done)
-			break;
-
-		print("thread %ld running, got slot = %d, head=%d, tail=%d\n",
-		      pthread_self(), ctx->slots[ctx->head], ctx->head,
-		      ctx->tail);
-
-		ctx->head = (ctx->head + 1) % SLOT_SIZE;
-
-		pthread_mutex_unlock(ctx->mutex);
+#define WITH_LOCKED(mutex, BODY)             \
+	{                                    \
+		pthread_mutex_lock(mutex);   \
+		do {                         \
+			BODY;                \
+		} while (0);                 \
+		pthread_mutex_unlock(mutex); \
 	}
 
-	print("thread %ld quitting...\n", pthread_self());
+void *consumer_routine(void *arg)
+{
+	struct thread_context *ctx = arg;
+	bool stop = false;
+
+	print("consumer starting...\n");
+
+	while (!stop) {
+		WITH_LOCKED(ctx->mutex, {
+			while (ctx->size - ctx->emptyslots == 0 && !ctx->done) {
+				print("consumer going to waiting, head=%d, tail=%d, done=%s\n",
+				      ctx->head, ctx->tail,
+				      ctx->done ? "true" : "false");
+
+				pthread_cond_wait(ctx->wait_producer,
+						  ctx->mutex);
+			}
+			if (ctx->done && (ctx->size - ctx->emptyslots == 0)) {
+				stop = true;
+				break;
+			}
+
+			bool has_waits = ctx->emptyslots == 0;
+			int value = ctx->slots[ctx->head];
+
+			print("consumer running, got slot[%d] = %d\n",
+			      ctx->head, value);
+
+			ctx->head = (ctx->head + 1) % ctx->size;
+			ctx->emptyslots++;
+			if (has_waits)
+				pthread_cond_signal(ctx->wait_consumer);
+		});
+	}
+
+	print("consumer quitting...\n");
 
 	pthread_exit(NULL);
 }
 
-#define NUM_THREADS 2
-
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
-
 int main(void)
 {
 	pthread_t threads[NUM_THREADS];
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
+	pthread_cond_t condvar2 = PTHREAD_COND_INITIALIZER;
 	struct thread_context ctx = {
 		.mutex = &mutex,
-		.condvar = &condvar,
-		.done = false,
+		.wait_producer = &condvar,
+		.wait_consumer = &condvar2,
+		.emptyslots = SLOT_SIZE,
+		.size = SLOT_SIZE,
 	};
+	now();
+	struct timespec time;
+	clock_gettime(CLOCK_REALTIME, &time);
 
-	srand(time(NULL));
+	srand(time.tv_nsec + time.tv_sec * 1e9);
 
 	for (int i = 0; i < NUM_THREADS; i++) {
 		int err;
 
-		err = pthread_create(&threads[i], NULL, pthread_routine, &ctx);
+		err = pthread_create(&threads[i], NULL, consumer_routine, &ctx);
 		if (err)
 			perror("pthread_create");
 	}
 
 	for (int i = 0; i < SLOT_SIZE; i++) {
-		pthread_mutex_lock(ctx.mutex);
+		int value = rand();
 
-		ctx.slots[ctx.tail] = rand() % 1000;
+		WITH_LOCKED(ctx.mutex, {
+			while (ctx.emptyslots == 0)
+				pthread_cond_wait(ctx.wait_consumer, ctx.mutex);
 
-		int next = (ctx.tail + 1) % SLOT_SIZE;
-		while (next == ctx.head) {
-			print("producer waiting for condition\n");
-			pthread_cond_wait(ctx.condvar, ctx.mutex);
-		}
+			bool has_waits = ctx.size - ctx.emptyslots == 0;
 
-		ctx.tail = next;
+			print("producer put[%d]: %d\n", ctx.tail, value);
 
-		print("put slot head=%d, tail=%d\n", ctx.head, ctx.tail);
-		pthread_mutex_unlock(ctx.mutex);
+			ctx.slots[ctx.tail++] = value;
+			ctx.tail %= ctx.size;
+			ctx.emptyslots--;
 
-		pthread_cond_broadcast(ctx.condvar);
+			if (has_waits)
+				pthread_cond_broadcast(ctx.wait_producer);
+		});
 	}
-	pthread_mutex_lock(ctx.mutex);
-	ctx.done = true;
-	pthread_mutex_unlock(ctx.mutex);
-
-	print("task done(nanoseconds)\n");
+	WITH_LOCKED(ctx.mutex, {
+		bool has_waits = ctx.size - ctx.emptyslots == 0;
+		if (has_waits)
+			pthread_cond_broadcast(ctx.wait_producer);
+		ctx.done = true;
+	});
+	print("send task done\n");
 
 	for (int i = 0; i < NUM_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
-
 	return 0;
 }
