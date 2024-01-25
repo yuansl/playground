@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 )
 
+const BUFSIZE = 16 << 10 // 16KiB
+
 var (
 	filename string
 	c        int
@@ -40,19 +42,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	st, err := fp.Stat()
+	stat, err := fp.Stat()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "f.Stat failed: %v\n", err)
 		os.Exit(2)
 	}
 
-	const bs = 4096
-
 	bufPool := sync.Pool{
 		New: func() interface{} {
 			atomic.AddInt64(&counter, +1)
 			// fmt.Printf("#%d sync.Pool.New called again\n", atomic.LoadInt64(&counter))
-			return make([]byte, bs)
+			return make([]byte, BUFSIZE)
 		},
 	}
 
@@ -68,7 +68,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	var climit = make(chan struct{}, c)
-	for off := int64(0); off < st.Size(); off += bs {
+	for off := int64(0); off < stat.Size(); off += BUFSIZE {
 		climit <- struct{}{}
 
 		wg.Add(1)

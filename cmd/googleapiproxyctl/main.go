@@ -36,8 +36,8 @@ func initGrpcResolver() {
 
 func main() {
 	parseCmdArgs()
-	initGrpcResolver()
 
+	initGrpcResolver()
 	client, err := googleapisproxy.NewGcloudClient(scheme+"://defy-googleapisproxy.qiniu.com:443",
 		googleapisproxy.WithCAFile("/etc/ssl/certs/ca-certificates.crt"),
 		googleapisproxy.WithServerName("*.qiniuapi.com"))
@@ -46,9 +46,9 @@ func main() {
 	}
 	ctx := logger.NewContext(context.TODO(), logger.New())
 
-	if result, err := client.ListUrlMaps(ctx, &proto.ListUrlMapsRequest{ProjectId: "qiniu-cdn"}); err != nil {
+	result, err := client.ListUrlMaps(ctx, &proto.ListUrlMapsRequest{ProjectId: "qiniu-cdn"})
+	if err != nil {
 		util.Fatal(err)
-	} else {
-		fmt.Printf("urlmaps: %+v\n", result.Urlmaps)
 	}
+	fmt.Printf("urlmaps: %+v\n", result.Urlmaps)
 }

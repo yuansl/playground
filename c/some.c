@@ -144,14 +144,14 @@ static void send_http_request(int connfd, const char host[static 1])
 }
 
 typedef struct {
-} * json_t;
+} *json_t;
 typedef json_t json_value;
 
 json_t json_parse(const char *s);
 json_value json_get(json_t, const char *key);
 int json_put(json_t, const char *key, const json_value value);
 
-[[maybe_unused]] static void test_http_request(void)
+static void test_http_request(void)
 {
 	const char *host = "www.qiniu.com";
 	int connfd;

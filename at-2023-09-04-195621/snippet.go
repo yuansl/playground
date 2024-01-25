@@ -18,30 +18,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
-	"strings"
+
+	"github.com/yuansl/playground/util"
 )
 
-func fatal(v ...any) {
-	formatted := func() bool {
-		if len(v) == 0 {
-			return false
-		}
-		if format, ok := v[0].(string); ok && strings.Contains(format, "%") {
-			return true
-		}
-		return false
-	}
-	if formatted() {
-		fmt.Fprintf(os.Stderr, "fatal error: "+v[0].(string), v[1:]...)
-	} else {
-		fmt.Fprintln(os.Stderr, "fatal error: ", v)
-	}
-	pc, file, line, _ := runtime.Caller(1)
-	fn := runtime.FuncForPC(pc)
-	fmt.Fprintf(os.Stderr, "%s:\n\t%s:%d\n", fn.Name(), file, line)
-	os.Exit(1)
-}
+var fatal = util.Fatal
 
 func main() {
 	fp, err := os.Open("/tmp/some.tar.gz")

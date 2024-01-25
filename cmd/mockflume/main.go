@@ -7,27 +7,23 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+
+	"github.com/qbox/net-deftones/util"
 )
 
-var addr string
+var fatal = util.Fatal
 
-func parseCmdArgs() {
-	flag.StringVar(&addr, "addr", ":5140", "listen address of the server")
+var _options struct {
+	addr string
+}
+
+func parseCmdOptions() {
+	flag.StringVar(&_options.addr, "addr", ":5140", "listen address of the server")
 	flag.Parse()
 }
 
-func fatal(v ...any) {
-	fmt.Fprintln(os.Stderr, "fatal error: ", v)
-	os.Exit(1)
-}
-
-type Message struct {
-	Headers map[string]any
-	Body    string
-}
-
 func main() {
-	parseCmdArgs()
+	parseCmdOptions()
 
 	queue := make(chan []Message, runtime.NumCPU())
 	go func() {
@@ -58,5 +54,5 @@ func main() {
 		}
 		queue <- msgs
 	})
-	http.ListenAndServe(addr, nil)
+	println(http.ListenAndServe(_options.addr, nil))
 }

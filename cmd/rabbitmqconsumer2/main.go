@@ -1,26 +1,14 @@
-// -*- mode:go;mode:go-playground -*-
-// snippet of code @ 2023-05-26 16:44:48
-
-// === Go Playground ===
-// Execute the snippet with:                 Ctl-Return
-// Provide custom arguments to compile with: Alt-Return
-// Other useful commands:
-// - remove the snippet completely with its dir and all files: (go-playground-rm)
-// - upload the current buffer to playground.golang.org:       (go-playground-upload)
-
 package main
 
 import (
 	"context"
 	"flag"
-	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/qbox/net-deftones/logger"
-	"github.com/qbox/net-deftones/util"
-	"github.com/yuansl/playground/messagequeue"
+
 	"github.com/yuansl/playground/messagequeue/xrabbitmq"
+	"github.com/yuansl/playground/util"
 )
 
 var fatal = util.Fatal
@@ -28,7 +16,7 @@ var fatal = util.Fatal
 var _options struct {
 	rabbituser     string
 	rabbitpassword string
-	rabbitexch     string
+	exchange       string
 	rabbitqueue    string
 	rabbitaddr     string
 	datetime       time.Time
@@ -39,20 +27,20 @@ func parseCmdOptions() {
 	flag.StringVar(&_options.rabbituser, "user", "", "specify rabbitmq user")
 	flag.StringVar(&_options.rabbitpassword, "password", "", "specify rabbitmq password")
 	flag.StringVar(&_options.rabbitaddr, "addr", "amqp://defy:defy123@localhost:5672/", "specify rabbitmq address")
-	flag.StringVar(&_options.rabbitexch, "exch", "yuansl", "specify rabbitmq's exchange")
 	flag.StringVar(&_options.rabbitqueue, "queue", "test", "speicfy rabbit queue")
+	flag.StringVar(&_options.exchange, "exch", "yuansl", "specify rabbitmq exchange")
 	flag.TextVar(&_options.datetime, "datetime", time.Time{}, "specify datetime of cdn log for uploading")
 	flag.StringVar(&_options.domain, "domain", "www.example.com", "speicfy cdn domain for uploading log")
 	flag.Parse()
 }
 
 func main() {
-	parseCmdOptions()
-
 	var rabbitmqopts []xrabbitmq.RabbitMQOption
 
-	if _options.rabbitexch != "" {
-		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithExchange(_options.rabbitexch, xrabbitmq.EXCHANGE_TYPE_DIRECT))
+	parseCmdOptions()
+
+	if _options.exchange != "" {
+		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithExchange(_options.exchange, xrabbitmq.EXCHANGE_TYPE_DIRECT))
 	}
 	if _options.rabbitaddr != "" {
 		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithAddress(_options.rabbitaddr))
@@ -67,12 +55,15 @@ func main() {
 	if err != nil {
 		util.Fatal(err)
 	}
-	// uploader := NewUploaderMessager(WithMessageQueue(mq))
-	ctx := logger.NewContext(context.Background(), logger.NewWith(uuid.NewString()))
+	ctx := logger.NewContext(context.Background(), logger.New())
+	log := logger.FromContext(ctx)
 
-	err = mq.Sendmsg(ctx, &messagequeue.Message{Header: messagequeue.Header{Timestamp: time.Now(), UUID: logger.IdFromContext(ctx)}, Body: []byte("hello, this message")})
-	if err != nil {
-		util.Fatal(err)
+	for {
+		msg, err := mq.Recvmsg(ctx)
+		if err != nil {
+			util.Fatal(err)
+		}
+		log.Infof("\n\nReceived message: %s, messageid: %s, timestamp: %s\n", msg.Body, msg.Header.UUID, msg.Header.Timestamp)
 	}
-	fmt.Printf("done\n")
+
 }

@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -26,11 +27,12 @@ var _options struct {
 	accessKey, secretKey string
 	linkdomain           string
 	mongouri             string
-	domain               string
+	domains              string
 	bucket               string
 	begin                time.Time
 	end                  time.Time
 	verbose              bool
+	_continue            bool
 }
 
 func init() {
@@ -40,12 +42,13 @@ func init() {
 
 func parseCmdOptions() {
 	flag.StringVar(&_options.linkdomain, "linkdomain", "https://fusionlog.qiniu.com", "specify kodo link domain")
-	flag.StringVar(&_options.mongouri, "mongouri", "mongodb://127.0.0.1:27017", "specify mongo connect string")
+	flag.StringVar(&_options.mongouri, "mongouri", "mongodb://127.0.0.1:27017/fusionlogv2", "specify mongo connect string")
 	flag.TextVar(&_options.begin, "begin", time.Time{}, "begin time (in RFC3339)")
 	flag.TextVar(&_options.end, "end", time.Time{}, "end time (in RFC3339)")
-	flag.StringVar(&_options.domain, "domain", "", "specify domain")
+	flag.StringVar(&_options.domains, "domains", "", "specify domain (seperate by comma)")
 	flag.StringVar(&_options.bucket, "bucket", "fusionlog", "specify (kodo)bucket name")
 	flag.BoolVar(&_options.verbose, "v", false, "verbose")
+	flag.BoolVar(&_options._continue, "c", false, "whether continue or stop on error")
 	flag.Parse()
 }
 
@@ -82,34 +85,50 @@ func InspectLogLink(ctx context.Context, link *repository.LogLink) error {
 	return nil
 }
 
-func Run(ctx context.Context, repo repository.LinkRepository) error {
-	return util.WithContext(ctx, func() error {
-		links, err := repo.GetLinks(ctx, _options.domain, _options.begin, _options.end, repository.BusinessCdn)
-		if err != nil {
-			return fmt.Errorf("repo.GetLinks: %v", err)
+func Run(ctx context.Context, domains []string, begin, end time.Time, repo repository.LinkRepository) error {
+	log := logger.FromContext(ctx)
+	wg, ctx := errgroup.WithContext(ctx)
+	var counter atomic.Int32
+
+	go func() {
+		for range time.Tick(1 * time.Second) {
+			log.Infof("inspected %d link\n", counter.Load())
 		}
-		log := logger.FromContext(ctx)
-		log.Infof("got %d log links between %s and %s of domain '%s'\n",
-			len(links), _options.begin, _options.end, _options.domain)
+	}()
 
-		var counter atomic.Int32
-		wg, ctx := errgroup.WithContext(ctx)
-		go func() {
-			for range time.Tick(1 * time.Second) {
-				log.Infof("inspected %d link\n", counter.Load())
-			}
-		}()
-		for _, link := range links {
-			_link := link
-			wg.Go(func() error {
-				defer counter.Add(+1)
-				log.Infof("Inspecting link %+v ...\n", _link)
+	for _, domain := range domains {
+		_domain := domain
+		wg.Go(func() error {
+			return util.WithContext(ctx, func() error {
+				links, err := repo.GetLinks(ctx, _domain, begin, end, repository.BusinessCdn)
+				if err != nil {
+					return fmt.Errorf("repo.GetLinks: %v", err)
+				}
 
-				return InspectLogLink(ctx, &_link)
+				log.Infof("got %d log links between %s and %s of domain '%s'\n",
+					len(links), begin, end, _domain)
+
+				for _, link := range links {
+					_link := link
+					wg.Go(func() error {
+						defer counter.Add(+1)
+						log.Infof("Inspecting link %+v ...\n", _link)
+
+						err := InspectLogLink(ctx, &_link)
+						if err != nil {
+							fmt.Print(err)
+							if _options._continue {
+								return nil
+							}
+						}
+						return nil
+					})
+				}
+				return nil
 			})
-		}
-		return wg.Wait()
-	})
+		})
+	}
+	return wg.Wait()
 }
 
 func main() {
@@ -125,8 +144,10 @@ func main() {
 	if _options.secretKey == "" || _options.accessKey == "" {
 		util.Fatal("either access key or secret key must not be empty")
 	}
+	if _options.domains == "" {
+		util.Fatal("domain can not be empty")
+	}
 
-	// storage := kodo.NewStorageService(kodo.WithCredential(_options.accessKey, _options.secretKey), kodo.WithLinkDomain(_options.linkdomain))
 	repo, err := repository.NewMongoLinkRepository(_options.mongouri)
 	if err != nil {
 		util.Fatal("NewMongoLinkRepository:", err)
@@ -138,7 +159,7 @@ func main() {
 	}
 	ctx = util.InitSignalHandler(ctx)
 
-	err = Run(ctx, repo)
+	err = Run(ctx, strings.Split(_options.domains, ","), _options.begin, _options.end, repo)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			err = context.Cause(ctx)

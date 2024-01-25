@@ -15,28 +15,21 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yuansl/playground/util"
 )
 
 const _ENDPOINT_DEFAULT = "http://localhost:5140"
 
-func fatal(v ...any) {
-	pc, file, line, _ := runtime.Caller(1)
-	fn := runtime.FuncForPC(pc)
-
-	fmt.Fprintln(os.Stderr, "fatal error: ", v)
-	fmt.Fprintf(os.Stderr, "%s:\n\t%s:%d\n", fn.Name(), file, line)
-	os.Exit(1)
-}
+var fatal = util.Fatal
 
 func Send(ctx context.Context, fields []string) error {
 	payload := []struct {

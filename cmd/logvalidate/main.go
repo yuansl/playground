@@ -1,4 +1,3 @@
-// -*- mode:go; mode:go-playground -*-
 package main
 
 import (
@@ -6,11 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/qbox/net-deftones/logger"
+	"github.com/qbox/net-deftones/util"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/clients/logetl"
 	"github.com/yuansl/playground/clients/loglinks"
@@ -42,33 +44,51 @@ func parseCmdArgs() {
 	flag.Parse()
 }
 
-func inspectEtlTask(id string, etlcli *logetl.Client) error {
+func inspectEtlTask(ctx context.Context, id string, etlcli *logetl.Client) error {
 	r, err := etlcli.GetEtlTasks(&logetl.EtlTaskRequest{Id: id})
 	if err != nil {
 		return fmt.Errorf("etlTasks: %v", err)
 	}
 
-	log.Printf("result: %+v\n", r)
+	logger.FromContext(ctx).Infof("result: %+v\n", r)
 
 	return nil
 }
 
 func tryEtl(ctx context.Context, domain string, datetime time.Time, etlcli *logetl.Client) error {
-	r, err := etlcli.SendEtlTasksRequest(ctx, &logetl.EtlTasksRequest{
-		Cdn:           "all",
-		Domain:        domain,
-		Hour:          datetime,
-		Force:         true,
-		Manual:        true,
-		Priority:      10,
-		NotifyUpload:  true,
-		NotifyTraffic: true,
-		NotifyAnalyze: true,
+	var taskid string
+
+	err := util.WithRetry(ctx, func() error {
+		tasks, err := etlcli.SendEtlRetryRequest(ctx, &logetl.EtlRetryRequest{
+			Cdn:     "all",
+			Domains: []string{domain},
+			Start:   datetime,
+			End:     datetime.Add(1 * time.Hour),
+			Force:   true,
+			Manual:  true,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, logetl.ErrInvalid):
+				err = errors.Join(err, context.Canceled)
+			default:
+			}
+			return err
+		}
+		if len(tasks) > 0 {
+			taskid = tasks[0]
+		}
+		return nil
 	})
 	if err != nil {
-		return err
+		switch {
+		case errors.Is(err, context.Canceled):
+			return nil
+		default:
+			return err
+		}
 	}
-	return inspectEtlTask(r.TaskId, etlcli)
+	return inspectEtlTask(ctx, taskid, etlcli)
 }
 
 func fetchDomainLogLinks(domain string, day time.Time, g Granularity, client *loglinks.Client) ([]loglinks.LogLink, error) {
@@ -152,6 +172,7 @@ func doValidateDomainLogs(ctx context.Context, domain string, day, end time.Time
 	if len(links) == NumLogLinksBy(g) && filterout(links) {
 		return
 	}
+	log := logger.FromContext(ctx)
 
 	log.Printf("got %d links of domain %s at day %v\n", len(links), domain, day.Format(time.DateOnly))
 
@@ -210,5 +231,28 @@ func validateDomainsLogs(ctx context.Context, domains []string, begin, end time.
 func main() {
 	parseCmdArgs()
 
-	validateDomainsLogs(context.TODO(), strings.Split(domains, ","), begin, end, GranularityOf(granularity), sizeMin, loglinks.NewClient(), logetl.NewClient())
+	// validateDomainsLogs(context.TODO(), strings.Split(domains, ","), begin, end, GranularityOf(granularity), sizeMin, loglinks.NewClient(), logetl.NewClient())
+
+	etlcli := logetl.NewClient()
+	ctx := logger.NewContext(context.Background(), logger.New())
+	wg, ctx := errgroup.WithContext(ctx)
+	wg.SetLimit(concurrency)
+
+	for _, d := range strings.Split(domains, ",") {
+		if d == "" || d == "domain" {
+			continue
+		}
+
+		for datetime := begin; datetime.Before(end); datetime = datetime.AddDate(0, 0, +1) {
+			_datetime := datetime
+			domain := d
+			wg.Go(func() error {
+				return tryEtl(logger.NewContext(ctx, logger.New()), domain, _datetime, etlcli)
+			})
+		}
+	}
+	if err := wg.Wait(); err != nil {
+		fatal(err)
+	}
+	fmt.Printf("DONE\n")
 }

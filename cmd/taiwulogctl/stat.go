@@ -86,11 +86,11 @@ func extractDomainFrom(filename string) string {
 	return filepath.Base(unsafe.String(unsafe.SliceData(match), len(match)))
 }
 
-func stat(ctx context.Context, filenames []string, w ProcessWindow, sinker TrafficSinker) error {
+func stat(ctx context.Context, filenames []string, win ProcessWindow, sinker TrafficSinker) error {
 	var perTimestampP2P = make(map[GroupKey]int64)
-	var lineq = make(chan *logline, _concurrency)
-	var taiwuRawLogchan = make(chan *TaiwuRawLog, _concurrency)
-	var taiwuStdLogschan = make(chan []TaiwuStandardLog, _concurrency)
+	var lineq = make(chan *logline, _options.concurrency)
+	var taiwuRawLogchan = make(chan *TaiwuRawLog, _options.concurrency)
+	var taiwuStdLogschan = make(chan []TaiwuStandardLog, _options.concurrency)
 	var done = make(chan bool)
 	var linesCounter atomic.Int32
 
@@ -107,7 +107,7 @@ func stat(ctx context.Context, filenames []string, w ProcessWindow, sinker Traff
 		for stdlogs := range taiwuStdLogschan {
 			for _, stdlog := range stdlogs {
 				eventTime := time.Unix(stdlog.Timestamp/300_000*300_000/1000, 0)
-				if eventTime.Before(w.Begin) || eventTime.Compare(w.End) >= 0 {
+				if eventTime.Before(win.Begin) || eventTime.Compare(win.End) >= 0 {
 					continue
 				}
 				groupby := GroupKey{
@@ -124,7 +124,7 @@ func stat(ctx context.Context, filenames []string, w ProcessWindow, sinker Traff
 		defer close(taiwuStdLogschan)
 
 		egroup, _ := errgroup.WithContext(ctx)
-		for i := 0; i < _concurrency; i++ {
+		for i := 0; i < _options.concurrency; i++ {
 			egroup.Go(func() error {
 				for rawlog := range taiwuRawLogchan {
 					for _, event := range rawlog.Events {
@@ -154,7 +154,7 @@ func stat(ctx context.Context, filenames []string, w ProcessWindow, sinker Traff
 		defer close(taiwuRawLogchan)
 		egroup, ctx := errgroup.WithContext(ctx)
 
-		for i := 0; i < _concurrency; i++ {
+		for i := 0; i < _options.concurrency; i++ {
 			egroup.Go(func() error {
 				for line := range lineq {
 					linesCounter.Add(+1)

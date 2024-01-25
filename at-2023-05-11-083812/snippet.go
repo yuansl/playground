@@ -82,7 +82,16 @@ func foo3[T interface{ ~int | ~int8 | ~int16 }](a T, b T) {
 	_ = a == b
 }
 
+type Writer[T any] interface {
+	Write(T) (int, error)
+}
+
+func Read[T any](r Writer[T], v T) {
+	r.Write(v)
+}
+
 func main() {
+	Read(io.Discard, []byte(""))
 	nums := [_NR_NUMS]int{}
 
 	for i := 0; i < _NR_NUMS; i++ {

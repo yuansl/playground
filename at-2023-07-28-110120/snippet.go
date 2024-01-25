@@ -117,4 +117,6 @@ func main() {
 	ExampleComponents([]int{})
 
 	foo2[any]()
+
+	ExampleFromStrings()
 }

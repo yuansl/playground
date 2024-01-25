@@ -33,14 +33,14 @@ func (taiwu *taiwuTransport) RoundTrip(req *http.Request) (*http.Response, error
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	data, _ = httputil.DumpRequest(req, true)
-	logger.New().Infof("http request(raw): '%s'\n", bytes.Replace(data, []byte("\r\n"), []byte("..."), -1))
+	logger.FromContext(req.Context()).Infof("http request(raw): '%s'\n", bytes.Replace(data, []byte("\r\n"), []byte("..."), -1))
 
 	res, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
-	data, _ = httputil.DumpResponse(res, true) //FIXME: res.StatusCode >= http.StatusBadRequest)
-	logger.New().Infof("http response(raw): '%s'\n", bytes.Replace(data, []byte("\r\n"), []byte("..."), -1))
+	data, _ = httputil.DumpResponse(res, res.StatusCode >= http.StatusBadRequest)
+	logger.FromContext(req.Context()).Infof("http response(raw): '%s'\n", bytes.Replace(data, []byte("\r\n"), []byte("..."), -1))
 
 	return res, nil
 }

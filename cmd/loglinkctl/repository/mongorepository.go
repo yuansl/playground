@@ -51,7 +51,6 @@ func (db *fusionlogRepository) SetDownloadUrl(ctx context.Context, link *LogLink
 			"url":   url,
 			"mtime": time.Now().Unix(),
 		}},
-		// options.Update().SetUpsert(true),
 	)
 	return err
 }

@@ -50,6 +50,7 @@ func (sinker *robotsinker) Sink(ctx context.Context, stats []TrafficStat) error 
 			log.Infof("%s: bytes=%d\n", ts.Timestamp, ts.Bytes)
 
 			index := ts.Timestamp.Hour()*12 + ts.Timestamp.Minute()/5
+
 			if index >= len(bandwidths) {
 				panic(fmt.Sprintf("BUG: index(%d) > _NR_POINTS_PER_DAY(%d)", index, _NR_POINTS_PER_DAY))
 			}
@@ -75,7 +76,7 @@ func (sinker *robotsinker) Sink(ctx context.Context, stats []TrafficStat) error 
 		}
 
 		traffic := sinkv2.SavePointsRequest{
-			RequestId: "yuansl-" + groupBy.Domain + groupBy.Timestamp.Format(time.DateOnly),
+			RequestId: logger.IdFromContext(ctx),
 			DayPoints: points,
 		}
 		log.Infof("saving traffic: %+v\n", &traffic)

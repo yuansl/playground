@@ -20,23 +20,20 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"path"
-	"regexp"
 	"runtime"
 	"time"
 
 	"github.com/qbox/net-deftones/clients/sinkv2"
 	"github.com/qbox/net-deftones/logger"
+	"github.com/qbox/net-deftones/util"
 	netutil "github.com/qbox/net-deftones/util"
 	"golang.org/x/sync/errgroup"
 
 	titan "github.com/yuansl/playground/clients/titannetwork"
+	pcdn "github.com/yuansl/playground/cmd/taiwulogctl/logservice"
+	"github.com/yuansl/playground/cmd/taiwulogctl/logservice/titannetwork"
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker/robotsinker"
-	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu"
-	"github.com/yuansl/playground/cmd/taiwulogctl/taiwu/titannetwork"
-	"github.com/yuansl/playground/util"
 )
-
-var _filenameTimestampRegex = regexp.MustCompile(`[[:digit:]]{12}`)
 
 const (
 	_ACCESS_KEY_DEFAULT  = "557TpseUM8ovpfUhaw8gfa2DQ0104ZScM-BTIcBx"
@@ -44,54 +41,63 @@ const (
 	_KODO_BUCKET_DEFAULT = "fusionlogtest"
 )
 
-var (
-	_accessKey     = _ACCESS_KEY_DEFAULT
-	_secretKey     = _SECRET_KEY_DEFAULT
-	_bucket        = _KODO_BUCKET_DEFAULT
-	_prefix        string
-	_limit         int
-	_begin         time.Time
-	_end           time.Time
-	_domain        string
-	_outputdir     string
-	_mode          string
-	_robotsinkAddr string
-	_version       int
-	_concurrency   int
-	_sink          bool
-)
+var _options struct {
+	accessKey     string
+	secretKey     string
+	bucket        string
+	prefix        string
+	limit         int
+	begin         time.Time
+	end           time.Time
+	domain        string
+	outputdir     string
+	mode          string
+	robotsinkAddr string
+	version       int
+	concurrency   int
+	sink          bool
+	timeout       time.Duration
+}
 
 func init() {
+	_options.accessKey = _ACCESS_KEY_DEFAULT
+	_options.secretKey = _SECRET_KEY_DEFAULT
+
 	if env := os.Getenv("ACCESS_KEY"); env != "" {
-		_accessKey = env
+		_options.accessKey = env
 	}
 	if env := os.Getenv("SECRET_KEY"); env != "" {
-		_secretKey = env
+		_options.secretKey = env
 	}
 }
 
-func parseCmdArgs() {
-	flag.TextVar(&_begin, "begin", time.Time{}, "begin time")
-	flag.TextVar(&_end, "end", time.Time{}, "end time")
-	flag.StringVar(&_domain, "domain", "audiosdk.xmcdn.com", "specify cdn domain")
-	flag.StringVar(&_outputdir, "dir", "./", "directory for saving logs")
-	flag.StringVar(&_mode, "mode", "stat", "specify mode(one of stat|download)")
-	flag.StringVar(&_bucket, "bucket", _KODO_BUCKET_DEFAULT, "specify bucket name")
-	flag.StringVar(&_prefix, "prefix", "", "specify a bucket key prefix")
-	flag.StringVar(&_robotsinkAddr, "robotsink", "http://xs321:30060", "address of robotsink service")
-	flag.IntVar(&_version, "version", 1, "api version")
-	flag.IntVar(&_concurrency, "c", runtime.NumCPU(), "concurrency")
-	flag.BoolVar(&_sink, "sink", false, "sink result if set")
+func parseCmdOptions() {
+	flag.TextVar(&_options.begin, "begin", time.Time{}, "begin time")
+	flag.TextVar(&_options.end, "end", time.Time{}, "end time")
+	flag.StringVar(&_options.domain, "domain", "audiosdk.xmcdn.com", "specify cdn domain")
+	flag.StringVar(&_options.outputdir, "dir", "./", "directory for saving logs")
+	flag.StringVar(&_options.mode, "mode", "stat", "specify mode(one of stat|download)")
+	flag.StringVar(&_options.bucket, "bucket", _KODO_BUCKET_DEFAULT, "specify bucket name")
+	flag.StringVar(&_options.prefix, "prefix", "", "specify a bucket key prefix")
+	flag.StringVar(&_options.robotsinkAddr, "robotsink", "http://xs321:30060", "address of robotsink service")
+	flag.IntVar(&_options.version, "version", 1, "api version")
+	flag.IntVar(&_options.concurrency, "c", runtime.NumCPU(), "concurrency")
+	flag.BoolVar(&_options.sink, "sink", false, "sink result if set")
+	flag.DurationVar(&_options.timeout, "timeout", 10*time.Minute, "specify timeout")
 	flag.Parse()
 }
 
-func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, taiwu taiwu.LogService) error {
-	egroup, ctx := errgroup.WithContext(ctx)
-	defer egroup.Wait()
+const _XIAOHONGSHU_TAIWU_TOKEN = "386BD183"
+
+func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outputdir string, logservice pcdn.LogService) error {
+	wg, ctx := errgroup.WithContext(ctx)
+	defer wg.Wait()
+
+	wg.SetLimit(_options.concurrency)
 
 	for datetime := begin; datetime.Before(end); datetime = datetime.Add(5 * time.Minute) {
 		_datetime := datetime
-		links, err := taiwu.LogLinks(ctx, domain, datetime, "386BD183")
+		links, err := logservice.LogLinks(ctx, domain, datetime, _XIAOHONGSHU_TAIWU_TOKEN)
 		if err != nil {
 			switch {
 			case errors.Is(err, titan.ErrInvalid):
@@ -104,30 +110,37 @@ func downloadlogs(ctx context.Context, domain string, begin, end time.Time, outp
 			_i := i
 			_link := link
 
-			egroup.Go(func() error {
-				filename := path.Join(outputdir, fmt.Sprintf("/%s_%s-%04d.json", domain, _datetime.Format("200601021504"), _i))
-				fp, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0644)
+			wg.Go(func() error {
+				tmpf, err := os.CreateTemp("./", "*.tmp")
 				if err != nil {
 					return fmt.Errorf("os.OpenFile: %w", err)
 				}
-				defer fp.Close()
+				defer tmpf.Close()
+
+				log := logger.FromContext(ctx)
 
 				return netutil.WithRetry(ctx, func() error {
-					if err := download(ctx, _link.Url, fp); err != nil {
+					err := download(ctx, _link.Url, tmpf)
+					if err != nil {
 						switch {
 						case errors.Is(err, titan.ErrInvalid):
-							panic("BUG: you shoud review your request becuase of the error(INVALID): " + err.Error())
+							log.Warn("download(url=%d) error: %v, skipped\n", err)
+							return nil
+
 						default:
 							var cause flate.CorruptInputError
 							if errors.As(err, &cause) {
-								logger.FromContext(ctx).Warnf("%w: download %q error: %v, skip ...\n", cause, _link.Url, err)
+								log.Warnf("%w: download %q error: %v, skip ...\n", cause, _link.Url, err)
 								return nil
 							}
 							return err
 						}
 					}
-					logger.FromContext(ctx).Infof("saved %q as %q \n", _link.Url, filename)
-					return nil
+
+					filename := path.Join(outputdir, fmt.Sprintf("/%s_%s-%04d.json", domain, _datetime.Format("200601021504"), _i))
+					log.Infof("saved %q as %q \n", _link.Url, filename)
+
+					return os.Rename(tmpf.Name(), filename)
 				})
 			})
 		}
@@ -141,12 +154,12 @@ func usage() {
 }
 
 func main() {
-	parseCmdArgs()
+	parseCmdOptions()
 
-	if _begin.IsZero() {
+	if _options.begin.IsZero() {
 		util.Fatal("you must specify 'begin'")
 	}
-	if _end.IsZero() {
+	if _options.end.IsZero() {
 		util.Fatal("you must specify 'end'")
 	}
 
@@ -155,13 +168,17 @@ func main() {
 		http.ListenAndServe(":6060", nil)
 	}()
 
-	ctx := logger.NewContext(context.TODO(), logger.New())
-	switch _mode {
+	ctx, cancel := context.WithTimeout(context.Background(), _options.timeout)
+	defer cancel()
+
+	ctx = logger.NewContext(ctx, logger.New())
+
+	switch _options.mode {
 	case "stat":
 		var trafficSrv TrafficSinker
 
-		if _sink {
-			client, err := sinkv2.NewClient(_robotsinkAddr)
+		if _options.sink {
+			client, err := sinkv2.NewClient(_options.robotsinkAddr)
 			if err != nil {
 				util.Fatal("sinkv2.NewClient:", err)
 			}
@@ -170,7 +187,7 @@ func main() {
 			trafficSrv = NewNopTrafficSinker()
 		}
 
-		err := stat(ctx, flag.Args(), ProcessWindow{_begin, _end}, trafficSrv)
+		err := stat(ctx, flag.Args(), ProcessWindow{_options.begin, _options.end}, trafficSrv)
 		if err != nil {
 			util.Fatal("stat error:", err)
 		}
@@ -178,9 +195,9 @@ func main() {
 		titancli := titan.NewClient(
 			titan.WithCredential("qiniu", []byte("a5c90e5370c80067a2ac78aab1badb90")),
 		)
-		taiwusrv := titannetwork.NewTaiwuService(titancli, titannetwork.WithVersion(_version))
+		taiwusrv := titannetwork.NewTaiwuLogService(titancli, titannetwork.WithVersion(_options.version))
 
-		err := downloadlogs(ctx, _domain, _begin, _end, _outputdir, taiwusrv)
+		err := downloadlogs(ctx, _options.domain, _options.begin, _options.end, _options.outputdir, taiwusrv)
 		if err != nil {
 			util.Fatal("downloadlogs error:", err)
 		}

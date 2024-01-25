@@ -21,13 +21,13 @@ struct iterator {
 		.begin = a, .end = (a + ARRAY_SIZE(a)), .pos = a \
 	}
 
-#define zeroval(x) \
-	_Generic(x,		      \
-           char *: "",		      \
-	   string: "",		      \
-	   int: (int)NAN,	      \
-	   unsigned: (unsigned)NAN,   \
-	   double: NAN)
+#define zeroval(x)                       \
+	_Generic(x,                      \
+		char *: "",              \
+		string: "",              \
+		int: (int)NAN,           \
+		unsigned: (unsigned)NAN, \
+		double: NAN)
 
 #define next(iter, T)                               \
 	({                                          \
@@ -37,7 +37,7 @@ struct iterator {
 		x = it ? *(T *)it : zeroval(x);     \
 	})
 
-static void __attribute_maybe_unused__ test_any(void)
+void __attribute_maybe_unused__ test_any(void)
 {
 	any_t values[] = { ANY(3.18), ANY(18), ANY("hello, world") };
 

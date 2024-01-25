@@ -18,9 +18,9 @@ import (
 const _TITANNETWORK_ENDPOINT = "http://gateway.titannetwork.cn"
 
 var (
-	ErrInvalid     = errors.New("taiwulogctl: invalid argument")
-	ErrProtocol    = errors.New("taiwulogctl: protocol or network/io error")
-	ErrUnavailable = errors.New("taiwulogctl: service unavailable")
+	ErrInvalid     = errors.New("titannetwork: invalid argument")
+	ErrProtocol    = errors.New("titannetwork: protocol or network/io error")
+	ErrUnavailable = errors.New("titannetwork: service unavailable")
 )
 
 // Client represents a titannetwork client
@@ -63,13 +63,20 @@ func (client *Client) send(ctx context.Context, req *request, res any) error {
 			return fmt.Errorf("%w: json.Decode: %v", ErrProtocol, err)
 		}
 	}
-	switch {
-	case hres.StatusCode >= http.StatusInternalServerError:
-		return fmt.Errorf("%w: %s", ErrUnavailable, hres.Status)
-	case hres.StatusCode >= http.StatusBadRequest:
-		return fmt.Errorf("%w: %s", ErrInvalid, hres.Status)
-	default:
+
+	if hres.StatusCode >= http.StatusBadRequest {
+		var cause error
+		switch {
+		case hres.StatusCode >= http.StatusInternalServerError:
+			cause = ErrUnavailable
+		case hres.StatusCode >= http.StatusBadRequest:
+			cause = ErrInvalid
+		default:
+			cause = ErrProtocol
+		}
+		return fmt.Errorf("%w: %s (raw request: %+v)", cause, hres.Status, hreq.URL)
 	}
+
 	return nil
 }
 
@@ -86,19 +93,28 @@ type LogUrlResponseV2 struct {
 }
 
 func (client *Client) BossFlowLogUrlV2(ctx context.Context, req *LogUrlRequest) (*LogUrlResponseV2, error) {
-	payload := url.Values{}
+	var res LogUrlResponseV2
+	var payload = make(url.Values)
+
 	payload.Add("domain", req.Domain)
 	payload.Add("time", req.Timestamp.Format("200601021504"))
 	payload.Add("token", req.Token)
 
-	var res LogUrlResponseV2
-
 	if err := util.WithRetry(ctx, func() error {
-		return client.send(ctx, &request{
+		err := client.send(ctx, &request{
 			path:   "/boss/flow/log_url/v2",
 			method: http.MethodPost,
 			form:   payload,
 		}, &res)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvalid):
+				return errors.Join(err, context.Canceled)
+			default:
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -120,18 +136,27 @@ type LogUrlResponseV1 struct {
 }
 
 func (client *Client) BossFlowLogUrlV1(ctx context.Context, req *LogUrlRequest) (*LogUrlResponseV1, error) {
-	payload := url.Values{}
+	var res LogUrlResponseV1
+	var payload = make(url.Values)
+
 	payload.Add("domain", req.Domain)
 	payload.Add("time", req.Timestamp.Format("200601021504"))
 
-	var res LogUrlResponseV1
-
 	if err := util.WithRetry(ctx, func() error {
-		return client.send(ctx, &request{
+		err := client.send(ctx, &request{
 			path:   "/boss/flow/log_url/v1",
 			method: http.MethodPost,
 			form:   payload,
 		}, &res)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvalid):
+				return errors.Join(err, context.Canceled)
+			default:
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}

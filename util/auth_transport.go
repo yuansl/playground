@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	netutil "github.com/qbox/net-deftones/util"
 	"github.com/qiniu/go-sdk/v7/auth"
 )
 
@@ -26,7 +27,7 @@ func (t *AuthorizedTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 var _ http.RoundTripper = (*AuthorizedTransport)(nil)
 
-type TransportOption Option
+type TransportOption netutil.Option
 
 type transportOptions struct {
 	tokenType auth.TokenType
@@ -34,13 +35,13 @@ type transportOptions struct {
 }
 
 func WithTokenType(tokenType auth.TokenType) TransportOption {
-	return OptionFunc(func(op any) {
+	return netutil.OptionFunc(func(op any) {
 		op.(*transportOptions).tokenType = tokenType
 	})
 }
 
 func WithTransport(transport http.RoundTripper) TransportOption {
-	return OptionFunc(func(op any) {
+	return netutil.OptionFunc(func(op any) {
 		op.(*transportOptions).transport = transport
 	})
 }

@@ -7,13 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/qbox/net-deftones/logger"
 )
 
 const (
@@ -21,14 +22,19 @@ const (
 	_TRAFFIC_SINK_ENDPOINT = "http://jjh2746:12323"
 )
 
-var ErrInvalid = errors.New("clients.logetl: Invalid argument")
+var (
+	ErrInvalid     = errors.New("clients.logetl: Invalid argument")
+	ErrUnavailable = errors.New("clients.logetl: service unavailable")
+	ErrProtocol    = errors.New("clients.logetl: protocol/network error")
+)
 
 type Client struct {
 	*http.Client
+	endpoint string
 }
 
 type httpRequest struct {
-	url         string
+	path        string
 	method      string
 	query       url.Values
 	body        io.Reader
@@ -36,33 +42,35 @@ type httpRequest struct {
 }
 
 func (client *Client) sendRequest(ctx context.Context, req *httpRequest, res any) error {
-	url := req.url
+	url := client.endpoint + req.path
 	if len(req.query) > 0 {
 		url += "?" + req.query.Encode()
 	}
 	hreq, err := http.NewRequestWithContext(ctx, req.method, url, req.body)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: http.NewRequest: %w", ErrInvalid, err)
 	}
 	if req.contentType != "" {
 		hreq.Header.Set("Content-Type", req.contentType)
 	}
 
-	data, _ := httputil.DumpRequest(hreq, false)
-	log.Printf("Request(raw): '%s'\n", data)
+	data, _ := httputil.DumpRequest(hreq, true)
+	logger.FromContext(ctx).Infof("Request(raw): '%s'\n", data)
 
 	hres, err := client.Do(hreq)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: client.Do: %w", ErrProtocol, err)
 	}
 	defer hres.Body.Close()
 
 	data, _ = httputil.DumpResponse(hres, hres.StatusCode >= http.StatusBadRequest)
 
-	log.Printf("Response(raw): '%s'\n", data)
+	logger.FromContext(ctx).Infof("Response(raw): '%s'\n", data)
 
 	if strings.Contains(hres.Header.Get("Content-Type"), "application/json") {
-		return json.NewDecoder(hres.Body).Decode(res)
+		if err = json.NewDecoder(hres.Body).Decode(res); err != nil {
+			return fmt.Errorf("%w: json.Decode: %w", ErrProtocol, err)
+		}
 	}
 	_, err = io.Copy(io.Discard, hres.Body)
 	return err
@@ -86,10 +94,10 @@ type EtlTaskResponse struct {
 	} `json:"rawTask"`
 }
 
-func (*Client) GetEtlTasks(r *EtlTaskRequest) (*EtlTaskResponse, error) {
+func (c *Client) GetEtlTasks(r *EtlTaskRequest) (*EtlTaskResponse, error) {
 	var payload EtlTaskResponse
 
-	res, err := http.Get("http://xs201:12324/v5/etl/tasks/" + r.Id)
+	res, err := http.Get(c.endpoint + "/v5/etl/tasks/" + r.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +144,7 @@ func (client *Client) SendEtlTasksRequest(ctx context.Context, req *EtlTasksRequ
 	_ = json.NewEncoder(&buf).Encode(req)
 
 	if err := client.sendRequest(ctx, &httpRequest{
-		url:         _LOGETL_ENDPOINT + "/v5/etl/tasks",
+		path:        "/v5/etl/tasks",
 		method:      http.MethodPost,
 		contentType: "application/json",
 		body:        &buf,
@@ -171,25 +179,24 @@ func (r *EtlRetryRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x)
 }
 
-type EtlRetryResponse any
+type EtlRetryResponse []string
 
-func (client *Client) SendEtlRetryRequest(ctx context.Context, req *EtlRetryRequest) (*EtlRetryResponse, error) {
+func (client *Client) SendEtlRetryRequest(ctx context.Context, req *EtlRetryRequest) (EtlRetryResponse, error) {
 	var buf bytes.Buffer
-	var hres any
+	var hres EtlRetryResponse
 
 	_ = json.NewEncoder(&buf).Encode(req)
 
 	if err := client.sendRequest(ctx,
 		&httpRequest{
-			url:         _LOGETL_ENDPOINT + "/v5/etl/retry",
+			path:        "/v5/etl/retry",
 			method:      http.MethodPost,
 			body:        &buf,
 			contentType: "application/json",
 		}, &hres); err != nil {
 		return nil, fmt.Errorf("sendRequest: %v", err)
 	}
-	res := hres.(EtlRetryResponse)
-	return &res, nil
+	return hres, nil
 }
 
 type DataType int
@@ -227,7 +234,7 @@ func (client *Client) GetUnifyDaySyncs(ctx context.Context, req *DaySyncsRequest
 
 	if err := client.sendRequest(ctx,
 		&httpRequest{
-			url:    _TRAFFIC_SINK_ENDPOINT + "/v3/unify/day/syncs",
+			path:   _TRAFFIC_SINK_ENDPOINT + "/v3/unify/day/syncs",
 			method: http.MethodGet,
 			query:  query,
 		}, &hres); err != nil {
@@ -237,5 +244,5 @@ func (client *Client) GetUnifyDaySyncs(ctx context.Context, req *DaySyncsRequest
 }
 
 func NewClient() *Client {
-	return &Client{Client: http.DefaultClient}
+	return &Client{Client: http.DefaultClient, endpoint: _LOGETL_ENDPOINT}
 }
