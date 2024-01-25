@@ -1,6 +1,6 @@
 #include <stdio.h>
+#include "util.h"
 
-#define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a)[0]))
 #define NR_CASES 2
 
 struct iter {

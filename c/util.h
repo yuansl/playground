@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define NORETURN __attribute__((noreturn))
 
@@ -30,5 +31,24 @@ static inline NORETURN void __fatal(const char *fmt, ...)
 			__LINE__);                                            \
 		abort();                                                      \
 	})
+
+#define WITH_LOCKED(mutex, BODY)             \
+	{                                    \
+		pthread_mutex_lock(mutex);   \
+		do {                         \
+			BODY;                \
+		} while (0);                 \
+		pthread_mutex_unlock(mutex); \
+	}
+
+#define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a)[0]))
+
+static inline void init_rand(void)
+{
+	struct timespec time;
+	clock_gettime(CLOCK_REALTIME, &time);
+
+	srand(time.tv_nsec + time.tv_sec * 1e9);
+}
 
 #endif

@@ -439,7 +439,7 @@ struct array2 {
 
 constexpr int NR_NUMBERS = 10;
 
-int main(void)
+void test_scale(void)
 {
 	union image img = IMAGE(.pixel = 3);
 	(void)img;
@@ -463,6 +463,15 @@ int main(void)
 
 	printf("rectange.height=%.2f,wigth=%.2f, circle.r=%.2f\n", r.height,
 	       r.width, c.r);
+}
+
+int main(void)
+{
+	srand(time(NULL));
+
+	for (int i = 0; i < 10; i++)
+		printf("%d ", rand() % 1000);
+	printf("\n");
 
 	return 0;
 }
