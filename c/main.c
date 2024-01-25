@@ -1,110 +1,13 @@
 #define _GNU_SOURCE
-#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <assert.h>
 
 #include "util.h"
 #include "slice.h"
 #include "stringbuffer.h"
 #include "any.h"
 
-#define SLICE_SIZE_MAX 128
-
 constexpr int STRING_BUFSIZE = 10;
-
-#define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a[0])))
-
-[[noreturn]] static inline void _fatal(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	exit(1);
-}
-
-#define MAYBE_UNUSED [[maybe_unused]]
-
-typedef unsigned char byte;
-
-stringbuffer_t *create_buffer(size_t cap)
-{
-	stringbuffer_t *array = calloc(1, sizeof(*array));
-
-	assert(array != NULL);
-
-	array->buf = slice_create(cap);
-
-	return array;
-}
-
-size_t buffer_available(stringbuffer_t *array)
-{
-	return slice_available(array->buf);
-}
-
-int buffer_append(stringbuffer_t *array, const byte *msg)
-{
-	int result;
-
-	do {
-		if ((result = slice_append(array->buf, msg)) < 0) {
-			if (result == ENOSPACE) {
-				int newcap = array->buf->cap * 2;
-				array->buf = realloc(array->buf, newcap);
-				assert(array != NULL);
-				assert(array->buf != NULL);
-				array->buf->cap = newcap;
-				continue;
-			}
-			return result;
-		}
-	} while (false);
-
-	array->w_off += strlen((const char *)msg);
-
-	return 0;
-}
-
-int buffer_read(stringbuffer_t *array, byte buf[], size_t size)
-{
-	int result;
-	byte *tmp;
-
-	result = buffer_available(array);
-
-	if (result < 0) {
-		return result;
-	} else if ((int)size > result) {
-		return EUNAVAILABLE;
-	}
-	tmp = slice_bytes(array->buf, array->r_off, size);
-	if (tmp) {
-		memcpy(buf, tmp, size);
-		array->r_off += size;
-	}
-
-	return 0;
-}
-
-byte *buffer_bytes(stringbuffer_t *array)
-{
-	return slice_bytes(array->buf, array->r_off,
-			   array->w_off - array->r_off);
-}
-
-void buffer_destroy(stringbuffer_t *array)
-{
-	slice_destroy(array->buf);
-	free(array);
-}
 
 typedef const char *string;
 
@@ -112,10 +15,6 @@ struct iterator {
 	void *begin, *end;
 	void *pos;
 };
-
-struct {
-	/* empty */
-} empty_structs[STRING_BUFSIZE];
 
 #define ITERATOR_INITIALIZER(a)                                  \
 	{                                                        \
@@ -138,7 +37,7 @@ struct {
 		x = it ? *(T *)it : zeroval(x);     \
 	})
 
-static __attribute_maybe_unused__ void test_any(void)
+static void __attribute_maybe_unused__ test_any(void)
 {
 	any_t values[] = { ANY(3.18), ANY(18), ANY("hello, world") };
 
@@ -147,21 +46,21 @@ static __attribute_maybe_unused__ void test_any(void)
 	}
 }
 
-union a_union {
+union oneof {
 	int i;
 	double d;
 };
 
 int f(void)
 {
-	union a_union t;
+	union oneof t;
 	t.d = 3.0;
 	return t.i;
 }
 
 int f2(void)
 {
-	union a_union t;
+	union oneof t;
 	int *ip;
 	t.d = 3.0;
 	ip = &t.i;
@@ -170,6 +69,7 @@ int f2(void)
 
 int a = 3;
 
+/* type aliasing */
 int change_a(double *p, int *p2)
 {
 	int *x = (int *)p;
@@ -192,7 +92,7 @@ void matrix_fun(const int N, const float x[N][N])
 	printf("x[0][0]=%f\n", x[0][15]);
 }
 
-int main(void)
+void test_stringbuffer(void)
 {
 	stringbuffer_t *array = create_buffer(STRING_BUFSIZE);
 	const char *greet = "你好"; /* ,world */
@@ -210,4 +110,9 @@ int main(void)
 	printf("after append new message, now msg='%s'\n", buffer_bytes(array));
 
 	buffer_destroy(array);
+}
+
+int main(void)
+{
+	return 0;
 }

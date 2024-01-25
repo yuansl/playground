@@ -1,13 +1,14 @@
 SHELL=/bin/bash
 CC = gcc-13 -std=gnu2x
-CFLAGS = -g -O2 -Wall -Wextra -fno-strict-aliasing
+CFLAGS = -g -O2 -Wall -Wextra -fno-strict-aliasing -pipe
 
 OBJS = main.o
 OBJS += slice.o
 OBJS += stringbuffer.o
 OBJS += any.o
+OBJS += pthreads.o
 
-some: $(OBJS)
+a.out: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 clean:
-	$(RM) some $(OBJS)
+	$(RM) a.out $(OBJS)

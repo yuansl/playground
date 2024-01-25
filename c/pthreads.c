@@ -4,6 +4,8 @@
 
 #include <pthread.h>
 
+#include "util.h"
+
 #define NUM_THREADS 4
 #define SLOT_SIZE 240
 
@@ -23,7 +25,7 @@ static inline char *now(void)
 		printf(__VA_ARGS__);                               \
 	})
 
-struct thread_context {
+struct context {
 	pthread_mutex_t *mutex;
 	pthread_cond_t *wait_producer;
 	pthread_cond_t *wait_consumer;
@@ -34,18 +36,9 @@ struct thread_context {
 	bool done;
 };
 
-#define WITH_LOCKED(mutex, BODY)             \
-	{                                    \
-		pthread_mutex_lock(mutex);   \
-		do {                         \
-			BODY;                \
-		} while (0);                 \
-		pthread_mutex_unlock(mutex); \
-	}
-
 void *consumer_routine(void *arg)
 {
-	struct thread_context *ctx = arg;
+	struct context *ctx = arg;
 	bool stop = false;
 
 	print("consumer starting...\n");
@@ -83,24 +76,21 @@ void *consumer_routine(void *arg)
 	pthread_exit(NULL);
 }
 
-int main(void)
+void test_pthread_condvar(void)
 {
 	pthread_t threads[NUM_THREADS];
 	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
 	pthread_cond_t condvar2 = PTHREAD_COND_INITIALIZER;
-	struct thread_context ctx = {
+	struct context ctx = {
 		.mutex = &mutex,
 		.wait_producer = &condvar,
 		.wait_consumer = &condvar2,
 		.emptyslots = SLOT_SIZE,
 		.size = SLOT_SIZE,
 	};
-	now();
-	struct timespec time;
-	clock_gettime(CLOCK_REALTIME, &time);
 
-	srand(time.tv_nsec + time.tv_sec * 1e9);
+	init_rand();
 
 	for (int i = 0; i < NUM_THREADS; i++) {
 		int err;
@@ -140,5 +130,4 @@ int main(void)
 	for (int i = 0; i < NUM_THREADS; i++) {
 		pthread_join(threads[i], NULL);
 	}
-	return 0;
 }

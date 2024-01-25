@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+
 #include "util.h"
 #include "slice.h"
 
@@ -28,6 +29,7 @@ int slice_append(slice_t *slice, const byte *bytes)
 	if (len > slice_available(slice)) {
 		return ENOSPACE;
 	}
+
 	memcpy(slice->data, bytes, len);
 	slice->size += len;
 
@@ -46,6 +48,7 @@ byte *slice_bytes(slice_t *slice, int at, size_t nbytes)
 	if (slice->size > sizeof(buf)) {
 		fatal("BUG: sizeof(buf) too small, maybe you should grow it");
 	}
+
 	memcpy(buf, slice->data + at, nbytes);
 
 	return buf;
