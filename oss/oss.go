@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 //go:generate stringer -type StorageType -linecomment

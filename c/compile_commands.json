@@ -7,6 +7,8 @@
       "-O2",
       "-Wall",
       "-Wextra",
+      "-fno-strict-aliasing",
+      "-pipe",
       "-c",
       "-o",
       "main.o",
@@ -24,6 +26,8 @@
       "-O2",
       "-Wall",
       "-Wextra",
+      "-fno-strict-aliasing",
+      "-pipe",
       "-c",
       "-o",
       "slice.o",
@@ -41,6 +45,8 @@
       "-O2",
       "-Wall",
       "-Wextra",
+      "-fno-strict-aliasing",
+      "-pipe",
       "-c",
       "-o",
       "stringbuffer.o",
@@ -49,5 +55,43 @@
     "directory": "/home/yuansl/src/playground/c",
     "file": "/home/yuansl/src/playground/c/stringbuffer.c",
     "output": "/home/yuansl/src/playground/c/stringbuffer.o"
+  },
+  {
+    "arguments": [
+      "/usr/local/bin/gcc-13",
+      "-std=gnu2x",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-fno-strict-aliasing",
+      "-pipe",
+      "-c",
+      "-o",
+      "any.o",
+      "any.c"
+    ],
+    "directory": "/home/yuansl/src/playground/c",
+    "file": "/home/yuansl/src/playground/c/any.c",
+    "output": "/home/yuansl/src/playground/c/any.o"
+  },
+  {
+    "arguments": [
+      "/usr/local/bin/gcc-13",
+      "-std=gnu2x",
+      "-g",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-fno-strict-aliasing",
+      "-pipe",
+      "-c",
+      "-o",
+      "pthreads.o",
+      "pthreads.c"
+    ],
+    "directory": "/home/yuansl/src/playground/c",
+    "file": "/home/yuansl/src/playground/c/pthreads.c",
+    "output": "/home/yuansl/src/playground/c/pthreads.o"
   }
 ]

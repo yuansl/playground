@@ -27,6 +27,11 @@ var _options struct {
 }
 
 func parseCmdOptions() {
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s <ip>\n", os.Args[0])
+		os.Exit(1)
+	}
+
 	flag.StringVar(&_options.ipdb, "ipdb", "neo.ipv4.ipdb", "specify ipdb file")
 	flag.BoolVar(&_options.verbose, "v", false, "verbose")
 	flag.Parse()
@@ -46,17 +51,16 @@ func describeipdb(db *ipdb.City) {
 
 func main() {
 	parseCmdOptions()
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <ip>\n", os.Args[0])
-		os.Exit(1)
-	}
 
 	ip := os.Args[len(os.Args)-1]
 	db, err := ipdb.NewCity(_options.ipdb)
 	if err != nil {
 		util.Fatal(err)
 	}
+	
 	describeipdb(db)
+
+	ipdb.NewDistrict(name string)
 	// fmt.Println(db.Find("1.1.1.1", "CN"))            // return []string
 	// fmt.Println(db.FindMap("118.28.8.8", "CN"))      // return map[string]string
 

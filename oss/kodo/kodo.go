@@ -12,14 +12,13 @@ import (
 	"time"
 	"unsafe"
 
-	fusionutil "github.com/qbox/net-deftones/util"
+	"github.com/qbox/net-deftones/util"
 	"github.com/qiniu/go-sdk/v7/auth"
 	"github.com/qiniu/go-sdk/v7/storage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/yuansl/playground/oss"
-	"github.com/yuansl/playground/util"
 )
 
 const (
@@ -168,7 +167,7 @@ func (kodo *StorageService) Download(ctx context.Context, bucket, key string) ([
 
 				var data []byte
 
-				if err := fusionutil.WithRetry(ctx, func() error {
+				if err := util.WithRetry(ctx, func() error {
 					var err error
 					data, err = doOnceHttpRequest(ctx, url, WithRangeRequest(begin, end))
 					return err

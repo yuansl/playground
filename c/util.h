@@ -41,7 +41,10 @@ static inline NORETURN void __fatal(const char *fmt, ...)
 		pthread_mutex_unlock(mutex); \
 	}
 
-#define ARRAY_SIZE(a) (sizeof((a)) / sizeof((a)[0]))
+#define ARRAY_SIZE(a) (int)(sizeof((a)) / sizeof((a)[0]))
+
+/* strequal return true if two strings s1 and s2 are equal */
+#define strequal(s1, s2) (strcmp(s1, s2) == 0)
 
 static inline void init_rand(void)
 {
