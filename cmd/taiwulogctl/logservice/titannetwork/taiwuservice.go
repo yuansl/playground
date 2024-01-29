@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/qbox/net-deftones/util"
 	"github.com/yuansl/playground/clients/titannetwork"
 	"github.com/yuansl/playground/cmd/taiwulogctl/logservice"
-	"github.com/yuansl/playground/util"
 )
 
 type taiwuService struct {

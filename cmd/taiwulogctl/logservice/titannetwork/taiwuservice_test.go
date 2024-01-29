@@ -38,7 +38,7 @@ func Test_taiwuService(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				t.Logf("links=%+v\n", links)
+				_ = links
 				return nil
 			},
 		},

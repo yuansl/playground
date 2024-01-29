@@ -20,31 +20,30 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 
 	"github.com/yuansl/playground/util"
 )
 
-const MAX_FILE_SIZE = 1 << 30
+const MAX_DBFILE_SIZE = 1 << 30
 
-const METADATA_LEN_NR_BYTES = 4
+const IPDB_METADATA_LEN_NR_BYTES = 4
 
 const (
-	NODE_OFFSET_FAR = 80
-	NODE_OFFSET_MAX = 96
+	IPDB_NODE_OFFSET_FAR = 80
+	IPDB_NODE_OFFSET_MAX = 96
 )
 
 const (
-	NODE_INDEX_BASE_FAR  = 1
-	NODE_INDEX_BASE_NEAR = 0
+	IPDB_NODE_INDEX_BASE_FAR  = 1
+	IPDB_NODE_INDEX_BASE_NEAR = 0
 )
+
+const IPDB_NODE_SIZE_NR_BYTES = 2
 
 const (
 	IPV4_BITS = net.IPv4len * 8
 	IPV6_BITS = net.IPv6len * 8
 )
-
-const IP_NODE_SIZE_NR_BYTES = 2
 
 const LANGUAGE_CN = "CN"
 
@@ -62,7 +61,39 @@ type MetaData struct {
 	Fields    []string       `json:"fields"`
 }
 
-type ReadWriter struct{}
+var _ipinfoFields = [...]string{
+	"country_name",
+	"region_name",
+	"city_name",
+	"owner_domain",
+	"isp_domain",
+	"latitude",
+	"longitude",
+	"timezone",
+	"utc_offset",
+	"china_admin_code",
+	"idd_code",
+	"country_code",
+	"continent_code",
+}
+
+type IPInfo struct {
+	Latwgs    []byte `awdb:"latwgs" ipdb:"latitude"`
+	Lngwgs    []byte `awdb:"lngwgs" ipdb:"longitude"`
+	Continent []byte `awdb:"continent" ipdb:"continent_code"`
+	Areacode  []byte `awdb:"areacode" ipdb:"country_code"`
+	Country   []byte `awdb:"country" ipdb:"country_name"`
+	City      []byte `awdb:"city" ipdb:"city_name"`
+	Accuracy  []byte `awdb:"accuracy"`
+	Asnumber  []byte `awdb:"asnumber"`
+	Isp       []byte `awdb:"isp" ipdb:"isp_domain"`
+	Owner     []byte `awdb:"owner" ipdb:"owner_domain"`
+	Radius    []byte `awdb:"radius"`
+	Province  []byte `awdb:"province" ipdb:"region_name"`
+	Source    []byte `awdb:"source"`
+	Timezone  []byte `awdb:"timezone" ipdb:"utc_offset"`
+	Zipcode   []byte `awdb:"zipcode" ipdb:"idd_code"`
+}
 
 func bitscount(ip net.IP) int {
 	if ipv4 := ip.To4(); ipv4 != nil {
@@ -78,42 +109,81 @@ type IPdb struct {
 	ipdata  []byte
 }
 
-func (db *IPdb) findNode(node, index int) int {
-	off := node*8 + index*4
+func (db *IPdb) findNode(node, bit int) int {
+	off := node*8 + bit*4
 	nextnode := int(binary.BigEndian.Uint32(db.ipdata[off : off+4]))
 
-	fmt.Printf("node=%d,index=%d,off=%d,nextnode=%d,next4bytes=%d\n", node, index, off, nextnode, binary.BigEndian.Uint32(db.ipdata[off+4:off+8]))
+	fmt.Printf("node=%d,binbit=%d,nextnode=%d\n", node, bit, nextnode)
 
 	return nextnode
 }
 
-func (db *IPdb) Search(ip net.IP) error {
-	bits := bitscount(ip)
-	node := 0
+func (db *IPdb) putNode(node *int, index int) {
+	off := (*node)*8 + index*4
+	(*node)++
+	fmt.Printf("put node %d at %d, index=%d\n", *node, off, index)
+	binary.BigEndian.PutUint32(db.ipdata[off:off+4], uint32(*node))
+}
 
-	if bits == IPV4_BITS {
+func (db *IPdb) nodeOffsetof(ip net.IP) int {
+	node := 0
+	nbits := bitscount(ip)
+
+	if nbits == IPV4_BITS {
 		node = db.ipv4off // ip is a ipv4
+		ip = ip.To4()
 	}
-	for i := 0; i < bits && node <= int(db.meta.NodeCount); i++ {
-		node = db.findNode(node, ((0xFF&int(ip[i>>3]))>>uint(7-(i%8)))&1)
+	fmt.Printf("nbits of ip %s: %d\n", ip, nbits)
+	for i := 0; i < nbits && node <= int(db.meta.NodeCount); i++ {
+		bit := ((0xff & ip[i/8]) >> (7 - (i % 8))) & 0x01
+		fmt.Printf("ip[%d]=%#b\n", i/8, ip[i/8])
+		node = db.findNode(node, int(bit))
 	}
-	fmt.Printf("got node=%d, nodecount=%d\n", node, db.meta.NodeCount)
 	if node > int(db.meta.NodeCount) {
-		ipNodeOffset := node - int(db.meta.NodeCount) + int(db.meta.NodeCount)*8
-		ipNodeSize := int(binary.BigEndian.Uint16(db.ipdata[ipNodeOffset : ipNodeOffset+IP_NODE_SIZE_NR_BYTES]))
-		if (ipNodeOffset + IP_NODE_SIZE_NR_BYTES + ipNodeSize) > len(db.ipdata) {
-			return ErrDatabase
-		}
-		ipNode := db.ipdata[ipNodeOffset+IP_NODE_SIZE_NR_BYTES : ipNodeOffset+IP_NODE_SIZE_NR_BYTES+ipNodeSize]
-		fields := bytes.Split(ipNode, []byte("\t"))
-		langoff := db.meta.Languages[LANGUAGE_CN]
-		ipinfos := fields[langoff : langoff+len(db.meta.Fields)]
-		for i, ipinfo := range ipinfos {
-			fmt.Printf("%s: %s\n", db.meta.Fields[i], ipinfo)
-		}
-		return nil
+		return int(db.meta.NodeCount)*8 + node - int(db.meta.NodeCount)
 	}
-	return ErrNotFound
+	return -1
+}
+
+func (db *IPdb) Put(ip net.IP) {
+
+}
+
+func (db *IPdb) Search(ip net.IP) error {
+	ipNodeOffset := db.nodeOffsetof(ip)
+
+	if ipNodeOffset == -1 {
+		return ErrNotFound
+	}
+	// |---2 Byte node-size-length----|------ (node-size-length bytes) node info data----|
+	ipNodeSize := int(binary.BigEndian.Uint16(db.ipdata[ipNodeOffset : ipNodeOffset+IPDB_NODE_SIZE_NR_BYTES]))
+
+	if (ipNodeOffset + IPDB_NODE_SIZE_NR_BYTES + ipNodeSize) > len(db.ipdata) {
+		return ErrDatabase
+	}
+	ipNode := db.ipdata[ipNodeOffset+IPDB_NODE_SIZE_NR_BYTES : ipNodeOffset+IPDB_NODE_SIZE_NR_BYTES+ipNodeSize]
+
+	fmt.Printf("nodeoffset=%d,nodesize=%d,nodedata=%s\n", ipNodeOffset, ipNodeSize, ipNode)
+
+	fields := bytes.Split(ipNode, []byte("\t"))
+
+	langoff := db.meta.Languages[LANGUAGE_CN]
+	ipinfos := fields[langoff : langoff+len(db.meta.Fields)]
+
+	for i, ipinfo := range ipinfos {
+		fmt.Printf("%s: %s\n", db.meta.Fields[i], ipinfo)
+	}
+	return nil
+}
+
+func (db *IPdb) init() {
+	for off, node := 0, 0; off < IPDB_NODE_OFFSET_MAX; off++ {
+		bit := IPDB_NODE_INDEX_BASE_NEAR
+		if off >= IPDB_NODE_OFFSET_FAR {
+			bit = IPDB_NODE_INDEX_BASE_FAR
+		}
+		db.putNode(&node, bit)
+	}
 }
 
 func open(filename string) *IPdb {
@@ -123,47 +193,65 @@ func open(filename string) *IPdb {
 	if err != nil {
 		util.Fatal(err)
 	}
-	dbdata, err := io.ReadAll(io.LimitReader(fp, MAX_FILE_SIZE))
+
+	dbdata, err := io.ReadAll(io.LimitReader(fp, MAX_DBFILE_SIZE))
 	if err != nil {
 		util.Fatal(err)
 	}
+	metalen := binary.BigEndian.Uint32(dbdata[:IPDB_METADATA_LEN_NR_BYTES])
 
-	metalen := binary.BigEndian.Uint32(dbdata[:METADATA_LEN_NR_BYTES])
-	if err = json.Unmarshal(dbdata[METADATA_LEN_NR_BYTES:METADATA_LEN_NR_BYTES+metalen], &metadata); err != nil {
+	if err = json.Unmarshal(dbdata[IPDB_METADATA_LEN_NR_BYTES:IPDB_METADATA_LEN_NR_BYTES+metalen], &metadata); err != nil {
 		util.Fatal(err)
 	}
-	ipdb := &IPdb{meta: &metadata, ipdata: dbdata[METADATA_LEN_NR_BYTES+metalen:]}
-
-	fmt.Printf("meta=%+v, len(dbdata)=%d\n", metadata, len(ipdb.ipdata))
+	fmt.Printf("meta: %+v\n", metadata)
+	ipdb := &IPdb{meta: &metadata, ipdata: dbdata[IPDB_METADATA_LEN_NR_BYTES+metalen:]}
 
 	node := 0
-	for i := 0; i < NODE_OFFSET_MAX && node < int(metadata.NodeCount); i++ {
-		if i >= NODE_OFFSET_FAR {
-			node = ipdb.findNode(node, NODE_INDEX_BASE_FAR)
-		} else {
-			node = ipdb.findNode(node, NODE_INDEX_BASE_NEAR)
+	for i := 0; i < IPDB_NODE_OFFSET_MAX && node < int(metadata.NodeCount); i++ {
+		bit := IPDB_NODE_INDEX_BASE_NEAR
+		if i >= IPDB_NODE_OFFSET_FAR {
+			bit = IPDB_NODE_INDEX_BASE_FAR
 		}
+		node = ipdb.findNode(node, bit)
 	}
-	fmt.Printf("ipv4off=%d\n", node)
 	ipdb.ipv4off = node
+
+	fmt.Printf("ipv4off start at:%d\n", node)
+
 	return ipdb
 }
 
 var _options struct {
 	ip string
+	db string
 }
 
-func parseCmdOptions() {
+func parseOptions() {
 	flag.StringVar(&_options.ip, "ip", "1.1.1.1", "specify a ip(v4|v6) address you want to query")
+	flag.StringVar(&_options.db, "db", "ipv4.ipdb", "specify ipdb file")
 	flag.Parse()
 }
 
 func main() {
-	parseCmdOptions()
-	db := open(filepath.Join(os.Getenv("HOME"), "/Downloads/neo.ipv4.ipdb"))
+	parseOptions()
+	db := open(_options.db)
 
-	err := db.Search(net.ParseIP(_options.ip))
-	if err != nil {
-		util.Fatal(err)
+	ip := net.ParseIP(_options.ip)
+	if ipv4 := ip.To4(); ipv4 != nil {
+		ip = ipv4
 	}
+	db.Search(ip)
+
+	// node := 0
+	// bits := bitcount(ip)
+
+	// for i := 0; i < bits; i++ {
+	// 	index := (0xff & ip[i/8]) >> (7 - (i % 8)) & 0x01
+	// 	db.putNode(&node, int(index))
+	// 	fmt.Printf("put: ip[%d]=%d(bin:%#8[2]b),index=%d,node=%d\n", i/8, ip[i/8], index, node)
+	// }
+
+	// fmt.Printf("node=%d\n", node)
+
+	// db.Search(ip)
 }

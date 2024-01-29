@@ -20,7 +20,7 @@ import (
 	"github.com/qbox/net-deftones/logger"
 	"github.com/qbox/net-deftones/util"
 	"github.com/yuansl/playground/messagequeue"
-	"github.com/yuansl/playground/messagequeue/xrabbitmq"
+	"github.com/yuansl/playground/messagequeue/rabbitmq"
 )
 
 var fatal = util.Fatal
@@ -33,44 +33,58 @@ var _options struct {
 	rabbitaddr     string
 	datetime       time.Time
 	domain         string
+	topic          string
+	role           string
 }
 
 func parseCmdOptions() {
 	flag.StringVar(&_options.rabbituser, "user", "", "specify rabbitmq user")
 	flag.StringVar(&_options.rabbitpassword, "password", "", "specify rabbitmq password")
-	flag.StringVar(&_options.rabbitaddr, "addr", "amqp://defy:defy123@localhost:5672/", "specify rabbitmq address")
+	flag.StringVar(&_options.rabbitaddr, "addr", "amqp://yuansl:yuansl@localhost:5672/", "specify rabbitmq address")
 	flag.StringVar(&_options.rabbitexch, "exch", "yuansl", "specify rabbitmq's exchange")
 	flag.StringVar(&_options.rabbitqueue, "queue", "test", "speicfy rabbit queue")
+	flag.StringVar(&_options.topic, "topic", "some", "specify topic(routing key in rabbitmq)")
 	flag.TextVar(&_options.datetime, "datetime", time.Time{}, "specify datetime of cdn log for uploading")
 	flag.StringVar(&_options.domain, "domain", "www.example.com", "speicfy cdn domain for uploading log")
+	flag.StringVar(&_options.role, "role", "producer", "whether this is a producer or consumer")
 	flag.Parse()
 }
 
 func main() {
 	parseCmdOptions()
 
-	var rabbitmqopts []xrabbitmq.RabbitMQOption
+	var rabbitmqopts []rabbitmq.RabbitMQOption
 
 	if _options.rabbitexch != "" {
-		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithExchange(_options.rabbitexch, xrabbitmq.EXCHANGE_TYPE_DIRECT))
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithExchange(_options.rabbitexch, rabbitmq.EXCHANGE_TYPE_DIRECT))
 	}
 	if _options.rabbitaddr != "" {
-		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithAddress(_options.rabbitaddr))
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithAddress(_options.rabbitaddr))
 	}
 	if _options.rabbituser != "" {
-		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithCredential(_options.rabbituser, _options.rabbitpassword))
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithCredential(_options.rabbituser, _options.rabbitpassword))
 	}
 	if _options.rabbitqueue != "" {
-		rabbitmqopts = append(rabbitmqopts, xrabbitmq.WithQueueName(_options.rabbitqueue))
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithQueueName(_options.rabbitqueue))
 	}
-	mq, err := xrabbitmq.NewRabbitMessageQueue(rabbitmqopts...)
+	if _options.topic != "" {
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithTopic(_options.topic))
+	}
+	if _options.role != "" {
+		rabbitmqopts = append(rabbitmqopts, rabbitmq.WithRole(_options.role))
+	}
+	mq, err := rabbitmq.NewProducer(rabbitmqopts...)
 	if err != nil {
 		util.Fatal(err)
 	}
-	// uploader := NewUploaderMessager(WithMessageQueue(mq))
 	ctx := logger.NewContext(context.Background(), logger.NewWith(uuid.NewString()))
 
-	err = mq.Sendmsg(ctx, &messagequeue.Message{Header: messagequeue.Header{Timestamp: time.Now(), UUID: logger.IdFromContext(ctx)}, Body: []byte("hello, this message")})
+	err = mq.Sendmsg(ctx, &messagequeue.Message{
+		Header: messagequeue.Header{
+			Queue: _options.rabbitqueue,
+			Topic: _options.topic, Timestamp: time.Now(), UUID: logger.IdFromContext(ctx),
+		},
+		Body: []byte("hello, this message")})
 	if err != nil {
 		util.Fatal(err)
 	}
