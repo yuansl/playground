@@ -1,12 +1,9 @@
-#include <json-c/json_object.h>
-#include <json-c/json_types.h>
-#include <linux/limits.h>
 #define _GNU_SOURCE
+#include <linux/limits.h>
 #include <math.h>
 #include <stdio.h>
 
-#include <json-c/json.h>
-
+#include <jansson.h>
 #include "util.h"
 #include "slice.h"
 #include "stringbuffer.h"
@@ -139,23 +136,48 @@ static void person_pretty_print(struct person *p)
 
 void do_test_json_c(const char json[static 1], struct person *per)
 {
-	json_object *token = json_tokener_parse(json);
+	json_t *object;
+	const char *key;
+	json_t *val;
+	json_error_t err;
 
-	json_object_object_foreach (token, key, val) {
-		if (strequal(key, "name")) {
-			strncpy(per->name, json_object_get_string(val),
-				sizeof(per->name) - 1);
-		} else if (strequal(key, "age")) {
-			per->age = json_object_get_int(val);
-		} else if (strequal(key, "blog")) {
-			const char *blog = json_object_get_string(val);
-			strncpy(per->blog, blog, sizeof(per->blog) - 1);
-		} else if (strequal(key, "addr")) {
-			const char *addr = json_object_get_string(val);
-			strncpy(per->addr, addr, sizeof(per->addr) - 1);
-		} else {
-			printf("key=%s will be ignored\n", key);
-		}
+	object = json_loadb(json, strlen(json), JSON_DECODE_ANY, &err);
+	if (!object)
+		fatal("json_loads: %m");
+
+	printf("load json successfully\n");
+
+	switch (json_typeof(object)) {
+	case JSON_INTEGER:
+		json_integer_value(object);
+		break;
+	case JSON_STRING:
+		break;
+	case JSON_OBJECT:
+		printf("this is a json_object\n");
+
+	default:
+		break;
+	}
+
+	json_object_foreach (object, key, val) {
+		/*
+		 * if (strequal(key, "name")) {
+		 * 	const char *name = json_string_value(val);
+		 * 	printf("name=%s\n", name);
+		 * 	strncpy(per->name, name, sizeof(per->name) - 1);
+		 * } else if (strequal(key, "age")) {
+		 * 	per->age = json_integer_value(val);
+		 * } else if (strequal(key, "blog")) {
+		 * 	const char *blog = json_string_value(val);
+		 * 	strncpy(per->blog, blog, sizeof(per->blog) - 1);
+		 * } else if (strequal(key, "addr")) {
+		 * 	const char *addr = json_string_value(val);
+		 * 	strncpy(per->addr, addr, sizeof(per->addr) - 1);
+		 * } else {
+		 * 	printf("key=%s will be ignored\n", key);
+		 * }
+		 */
 	}
 }
 
@@ -187,7 +209,9 @@ void test_any_struct(void)
 
 int main(void)
 {
-	printf("__STDC_VERSION__=%ld\n", __STDC_VERSION__);
+	printf("__STDC_VERSION__=%ld, (size_t)-1=%#b\n", __STDC_VERSION__,
+	       (unsigned)-1);
 	test_json_c();
+
 	return 0;
 }

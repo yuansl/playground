@@ -41,6 +41,15 @@ static inline NORETURN void __fatal(const char *fmt, ...)
 		pthread_mutex_unlock(mutex); \
 	}
 
+#define WITH_OPEN_AS(filename, fp, BODY)         \
+	{                                        \
+		FILE *fp = fopen(filename, "r"); \
+		do {                             \
+			BODY;                    \
+		} while (0);                     \
+		fclose(fp);                      \
+	}
+
 #define ARRAY_SIZE(a) (int)(sizeof((a)) / sizeof((a)[0]))
 
 /* strequal return true if two strings s1 and s2 are equal */
@@ -49,8 +58,8 @@ static inline NORETURN void __fatal(const char *fmt, ...)
 static inline void init_rand(void)
 {
 	struct timespec time;
-	clock_gettime(CLOCK_REALTIME, &time);
 
+	clock_gettime(CLOCK_REALTIME, &time);
 	srand(time.tv_nsec + time.tv_sec * 1e9);
 }
 
