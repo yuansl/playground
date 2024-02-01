@@ -35,8 +35,8 @@ char *stringify(any_t val)
 	}
 	case CHAR_PTR:
 	case UCHAR_PTR: {
-		const char *value = val->value;
-		strncpy(buf, value, sizeof(buf));
+		const char *value = (const char *)val->value;
+		strncpy(buf, value, sizeof(buf) - 1);
 		break;
 	}
 
@@ -74,7 +74,7 @@ void inspect_any(any_t val)
 	}
 	case CHAR_PTR:
 	case UCHAR_PTR: {
-		const char *value = val->value;
+		const char *value = (const char *)val->value;
 
 		printf(", value = %s\n", value);
 		break;

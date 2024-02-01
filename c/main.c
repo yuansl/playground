@@ -9,7 +9,7 @@
 #include "stringbuffer.h"
 #include "any.h"
 
-constexpr int STRING_BUFSIZE = 10;
+#define STRING_BUFSIZE 10
 
 /* maybe unused */
 #define __unused __attribute__((unused))
@@ -134,7 +134,7 @@ static void person_pretty_print(struct person *p)
 	       p->blog, p->addr);
 }
 
-void do_test_json_c(const char json[static 1], struct person *per)
+void do_test_json_c(const char json[static 1], struct person *)
 {
 	json_t *object;
 	const char *key;
@@ -209,9 +209,10 @@ void test_any_struct(void)
 
 int main(void)
 {
-	printf("__STDC_VERSION__=%ld, (size_t)-1=%#b\n", __STDC_VERSION__,
-	       (unsigned)-1);
-	test_json_c();
+	char a[0];
+
+	printf("sizeof(a)=%zd, &a[0]=%p, alignof(a)=%zd\n", sizeof a, a,
+	       alignof(a));
 
 	return 0;
 }
