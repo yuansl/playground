@@ -7,6 +7,7 @@ OBJS += slice.o
 OBJS += stringbuffer.o
 OBJS += any.o
 OBJS += pthreads.o
+OBJS += option.o
 
 a.out: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
