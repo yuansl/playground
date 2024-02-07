@@ -1,14 +1,12 @@
 #ifndef SLICE_H_
 #define SLICE_H_
 
-#include <stddef.h>
+#include "util.h"
 
 enum {
 	ENOSPACE = -2, /* there is no space in buffer */
 	EUNAVAILABLE /* something went wrong, maybe a bug */
 };
-
-typedef unsigned char byte;
 
 typedef struct slice {
 	size_t cap;

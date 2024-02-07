@@ -109,11 +109,28 @@ type IPdb struct {
 	ipdata  []byte
 }
 
+type DB struct {
+	Header struct {
+		metasize uint32
+		meta     []byte // in json
+	}
+	nodes []struct {
+		zero uint32
+		one  uint32
+	}
+	leafs []struct {
+		size    uint16
+		content []byte
+	}
+}
+
 func (db *IPdb) findNode(node, bit int) int {
 	off := node*8 + bit*4
 	nextnode := int(binary.BigEndian.Uint32(db.ipdata[off : off+4]))
 
-	fmt.Printf("node=%d,binbit=%d,nextnode=%d\n", node, bit, nextnode)
+	if node >= 96 {
+		fmt.Printf("node=%d,binbit=%d,off=%d,nextnode=%d(%#[4]x)\n", node, bit, off, nextnode)
+	}
 
 	return nextnode
 }
@@ -133,12 +150,16 @@ func (db *IPdb) nodeOffsetof(ip net.IP) int {
 		node = db.ipv4off // ip is a ipv4
 		ip = ip.To4()
 	}
-	fmt.Printf("nbits of ip %s: %d\n", ip, nbits)
+	ip2 := binary.BigEndian.Uint32(ip)
+	fmt.Printf("nbits of ip %s(%#08x): %d\n", ip, ip2, nbits)
+
 	for i := 0; i < nbits && node <= int(db.meta.NodeCount); i++ {
 		bit := ((0xff & ip[i/8]) >> (7 - (i % 8))) & 0x01
-		fmt.Printf("ip[%d]=%#b\n", i/8, ip[i/8])
+
 		node = db.findNode(node, int(bit))
+		fmt.Printf("ip[%d]=%#08b(%#02[2]x,bit=%#02x),node=%d\n", i, ip[i/8], bit, node)
 	}
+	fmt.Printf("node=%d\n", node)
 	if node > int(db.meta.NodeCount) {
 		return int(db.meta.NodeCount)*8 + node - int(db.meta.NodeCount)
 	}
@@ -204,8 +225,8 @@ func open(filename string) *IPdb {
 		util.Fatal(err)
 	}
 	fmt.Printf("meta: %+v\n", metadata)
-	ipdb := &IPdb{meta: &metadata, ipdata: dbdata[IPDB_METADATA_LEN_NR_BYTES+metalen:]}
 
+	ipdb := &IPdb{meta: &metadata, ipdata: dbdata[IPDB_METADATA_LEN_NR_BYTES+metalen:]}
 	node := 0
 	for i := 0; i < IPDB_NODE_OFFSET_MAX && node < int(metadata.NodeCount); i++ {
 		bit := IPDB_NODE_INDEX_BASE_NEAR
@@ -234,9 +255,23 @@ func parseOptions() {
 
 func main() {
 	parseOptions()
+
 	db := open(_options.db)
 
-	ip := net.ParseIP(_options.ip)
+	// for ip := 0xffff00; ip < 1000_00000; ip += 255 {
+	// 	var buf [4]byte
+
+	// 	binary.BigEndian.PutUint32(buf[:], uint32(ip))
+	// 	_ip := netip.AddrFrom4(netip.AddrFrom4(buf).As4()).String()
+
+	// 	ip := net.ParseIP("::0")
+	// 	if ipv4 := ip.To4(); ipv4 != nil {
+	// 		ip = ipv4
+	// 	}
+	// 	db.Search(ip)
+	// }
+
+	ip := net.ParseIP("::0")
 	if ipv4 := ip.To4(); ipv4 != nil {
 		ip = ipv4
 	}
@@ -250,8 +285,5 @@ func main() {
 	// 	db.putNode(&node, int(index))
 	// 	fmt.Printf("put: ip[%d]=%d(bin:%#8[2]b),index=%d,node=%d\n", i/8, ip[i/8], index, node)
 	// }
-
 	// fmt.Printf("node=%d\n", node)
-
-	// db.Search(ip)
 }

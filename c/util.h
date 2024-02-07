@@ -1,12 +1,35 @@
 #ifndef UTIL_H_SOME
 #define UTIL_H_SOME
 
-#include <stdarg.h>
+#include <stdarg.h> /* for va_{start,end} */
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <time.h> /* for clock_gettime */
 
 #define NORETURN __attribute__((noreturn))
+#define __unused __attribute__((unused))
+
+typedef unsigned char byte;
+
+#define ARRAY_SIZE(a) (int)(sizeof((a)) / sizeof((a)[0]))
+
+#ifndef max
+#define max(a, b)                  \
+	({                         \
+		typeof(a) _a = a;  \
+		typeof(b) _b = b;  \
+		_a > _b ? _a : _b; \
+	})
+#endif
+
+#ifndef min
+#define min(a, b)                  \
+	({                         \
+		typeof(a) _a = a;  \
+		typeof(b) _b = b;  \
+		_a < _b ? _a : _b; \
+	})
+#endif
 
 static inline NORETURN void __fatal(const char *fmt, ...)
 {
@@ -49,8 +72,6 @@ static inline NORETURN void __fatal(const char *fmt, ...)
 		} while (0);                     \
 		fclose(fp);                      \
 	}
-
-#define ARRAY_SIZE(a) (int)(sizeof((a)) / sizeof((a)[0]))
 
 /* strequal return true if two strings s1 and s2 are equal */
 #define strequal(s1, s2) (strcmp(s1, s2) == 0)

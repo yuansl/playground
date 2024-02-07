@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -27,6 +28,7 @@ const BUFSIZE = 1 << 20
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type TaiwuRawLog struct {
+	File   string
 	Did    string
 	Domain string
 	Events []struct {
@@ -43,6 +45,7 @@ type TaiwuRawLog struct {
 }
 
 type TaiwuStandardLog struct {
+	File      string
 	Domain    string
 	Url       string
 	Type      string
@@ -86,12 +89,14 @@ func extractDomainFrom(filename string) string {
 	return filepath.Base(unsafe.String(unsafe.SliceData(match), len(match)))
 }
 
+func dayOf(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 func stat(ctx context.Context, filenames []string, win ProcessWindow, sinker TrafficSinker) error {
-	var perTimestampP2P = make(map[GroupKey]int64)
 	var lineq = make(chan *logline, _options.concurrency)
 	var taiwuRawLogchan = make(chan *TaiwuRawLog, _options.concurrency)
 	var taiwuStdLogschan = make(chan []TaiwuStandardLog, _options.concurrency)
-	var done = make(chan bool)
 	var linesCounter atomic.Int32
 
 	start := time.Now()
@@ -104,26 +109,66 @@ func stat(ctx context.Context, filenames []string, win ProcessWindow, sinker Tra
 	}()
 
 	go func() {
-		for stdlogs := range taiwuStdLogschan {
-			for _, stdlog := range stdlogs {
-				eventTime := time.Unix(stdlog.Timestamp/300_000*300_000/1000, 0)
-				if eventTime.Before(win.Begin) || eventTime.Compare(win.End) >= 0 {
-					continue
+		egroup, ctx := errgroup.WithContext(ctx)
+
+		for _, file := range filenames {
+			_file := file
+			egroup.Go(func() error {
+				fp, err := os.Open(_file)
+				if err != nil {
+					util.Fatal(err)
 				}
-				groupby := GroupKey{
-					Domain:    stdlog.Domain,
-					Timestamp: eventTime,
+				defer fp.Close()
+
+				logger.FromContext(ctx).Infof("aggregating file %s ...\n", _file)
+
+				for r := bufio.NewReaderSize(fp, BUFSIZE); ; {
+					line, err := r.ReadBytes('\n')
+					if err != nil {
+						if !errors.Is(err, io.EOF) {
+							util.Fatal("bufio.ReadBytes: %v\n", err)
+						}
+						break
+					}
+					lineq <- &logline{bytes: bytes.TrimSpace(line), file: _file}
 				}
-				perTimestampP2P[groupby] += stdlog.P2p
-			}
+				return nil
+			})
 		}
-		done <- true
+		egroup.Wait()
+		close(lineq)
 	}()
 
 	go func() {
-		defer close(taiwuStdLogschan)
+		egroup, ctx := errgroup.WithContext(ctx)
 
+		for i := 0; i < _options.concurrency; i++ {
+			egroup.Go(func() error {
+				for line := range lineq {
+					linesCounter.Add(+1)
+
+					var taiwulog TaiwuRawLog
+
+					if err := json.Unmarshal(line.bytes, &taiwulog); err != nil {
+						logger.FromContext(ctx).Infof("WARN: json.Unmarshal(content=`%s`) error: %v (file=%s, skip ...)\n",
+							line.bytes, err, line.file)
+						return nil
+					}
+					taiwulog.Domain = extractDomainFrom(line.file)
+					taiwulog.File = line.file
+
+					taiwuRawLogchan <- &taiwulog
+				}
+				return nil
+			})
+		}
+		egroup.Wait()
+		close(taiwuRawLogchan)
+	}()
+
+	go func() {
 		egroup, _ := errgroup.WithContext(ctx)
+
 		for i := 0; i < _options.concurrency; i++ {
 			egroup.Go(func() error {
 				for rawlog := range taiwuRawLogchan {
@@ -132,6 +177,7 @@ func stat(ctx context.Context, filenames []string, win ProcessWindow, sinker Tra
 
 						for _, it := range event.Timeseries {
 							logs = append(logs, TaiwuStandardLog{
+								File:      rawlog.File,
 								Domain:    rawlog.Domain,
 								Url:       event.Url,
 								Type:      event.Type,
@@ -148,75 +194,40 @@ func stat(ctx context.Context, filenames []string, win ProcessWindow, sinker Tra
 			})
 		}
 		egroup.Wait()
+		close(taiwuStdLogschan)
 	}()
-
-	go func() {
-		defer close(taiwuRawLogchan)
-		egroup, ctx := errgroup.WithContext(ctx)
-
-		for i := 0; i < _options.concurrency; i++ {
-			egroup.Go(func() error {
-				for line := range lineq {
-					linesCounter.Add(+1)
-
-					var taiwulog TaiwuRawLog
-
-					if err := json.Unmarshal(line.bytes, &taiwulog); err != nil {
-						logger.FromContext(ctx).Infof("WARN: json.Unmarshal(content=`%s`) error: %v (file=%s, skip ...)\n", line.bytes, err, line.file)
-						return nil
-					}
-					taiwulog.Domain = extractDomainFrom(line.file)
-
-					taiwuRawLogchan <- &taiwulog
-				}
-				return nil
-			})
-		}
-		egroup.Wait()
-	}()
-
-	egroup, ctx := errgroup.WithContext(ctx)
-
-	for _, file := range filenames {
-		_file := file
-		egroup.Go(func() error {
-			fp, err := os.Open(_file)
-			if err != nil {
-				util.Fatal(err)
-			}
-			defer fp.Close()
-
-			logger.FromContext(ctx).Infof("aggregating file %s ...\n", _file)
-
-			for r := bufio.NewReaderSize(fp, BUFSIZE); ; {
-				line, err := r.ReadBytes('\n')
-				if err != nil {
-					if !errors.Is(err, io.EOF) {
-						util.Fatal("bufio.ReadBytes: %v\n", err)
-					}
-					break
-				}
-				lineq <- &logline{bytes: bytes.TrimSpace(line), file: _file}
-			}
-			return nil
-		})
-	}
-	egroup.Wait()
-	close(lineq)
-
-	<-done
 
 	var (
-		traffics      []TrafficStat
-		perDayTraffic = make(map[GroupKey][]TrafficPoint)
+		traffics        []TrafficStat
+		perDayTraffic   = make(map[GroupKey][]TrafficPoint)
+		perTimestampP2P = make(map[GroupKey]int64)
 	)
+
+	for stdlogs := range taiwuStdLogschan {
+		for _, stdlog := range stdlogs {
+			eventTime := time.Unix(stdlog.Timestamp/300_000*300_000/1000, 0)
+			if eventTime.Before(win.Begin) || eventTime.Compare(win.End) >= 0 {
+				continue
+			}
+			groupby := GroupKey{
+				Domain:    stdlog.Domain,
+				Timestamp: eventTime,
+			}
+			perTimestampP2P[groupby] += stdlog.P2p
+
+		}
+	}
+
 	for groupBy, bytes := range perTimestampP2P {
 		key := GroupKey{
 			Domain:    groupBy.Domain,
-			Timestamp: time.Date(groupBy.Timestamp.Year(), groupBy.Timestamp.Month(), groupBy.Timestamp.Day(), 0, 0, 0, 0, groupBy.Timestamp.Location()),
+			Timestamp: dayOf(groupBy.Timestamp),
 		}
 		perDayTraffic[key] = append(perDayTraffic[key], TrafficPoint{Timestamp: groupBy.Timestamp, Bytes: bytes})
+
+		fmt.Printf("timestamp: %+v, bytes: %d\n", groupBy, bytes)
 	}
+
 	for groupBy, timeseries := range perDayTraffic {
 		traffics = append(traffics, TrafficStat{Domain: groupBy.Domain, Region: RegionChina, Day: groupBy.Timestamp, Timeseries: timeseries})
 	}

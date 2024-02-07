@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/qbox/net-deftones/util"
+
 	"github.com/yuansl/playground/clients/logetl"
 	"github.com/yuansl/playground/cmd/etlctl/etlservice"
-	"github.com/yuansl/playground/util"
 )
 
 const _SYNC_BATCHSIZE_MAX = 200

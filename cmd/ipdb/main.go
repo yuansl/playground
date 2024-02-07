@@ -57,10 +57,9 @@ func main() {
 	if err != nil {
 		util.Fatal(err)
 	}
-	
+
 	describeipdb(db)
 
-	ipdb.NewDistrict(name string)
 	// fmt.Println(db.Find("1.1.1.1", "CN"))            // return []string
 	// fmt.Println(db.FindMap("118.28.8.8", "CN"))      // return map[string]string
 

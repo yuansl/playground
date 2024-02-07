@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 const _FUSION_SUFY_ENDPOINT = "http://fusiondomainproxy.qcdn-sophon-sufy.qa.qiniu.io"

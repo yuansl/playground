@@ -9,8 +9,8 @@ import (
 
 	"github.com/huaweicloud/huaweicloud-sdk-go-obs/obs"
 
+	"github.com/qbox/net-deftones/util"
 	"github.com/yuansl/playground/oss"
-	"github.com/yuansl/playground/util"
 )
 
 const _HUAWEI_OBS_ENDPOINT_DEFAULT = "https://obs.cn-north-4.myhuaweicloud.com"

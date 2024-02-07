@@ -1,10 +1,16 @@
+#include <pthread.h>
+#include <stdatomic.h>
 #define _GNU_SOURCE
+<<<<<<< Updated upstream
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h> /* for getaddrinfo */
 #include <complex.h>
 #include <time.h>
 #include <limits.h>
+=======
+#include <unistd.h>
+>>>>>>> Stashed changes
 #include <math.h>
 #include <stdio.h>
 #include <stdatomic.h>
@@ -15,12 +21,14 @@
 #include <pthread.h>
 
 #include <jansson.h>
+
 #include "util.h"
 #include "slice.h"
 #include "stringbuffer.h"
 #include "any.h"
 
 #define STRING_BUFSIZE 10
+<<<<<<< Updated upstream
 
 #include "option.h"
 
@@ -407,6 +415,8 @@ void test_scale(void)
 
 /* maybe unused */
 #define __unused __attribute__((unused))
+=======
+>>>>>>> Stashed changes
 
 typedef const char *string;
 
@@ -436,7 +446,7 @@ struct iterator {
 		x = it ? *(T *)it : zeroval(x);     \
 	})
 
-__unused void test_any(void)
+void __unused test_any(void)
 {
 	any_t values[] = { ANY(3.18), ANY(18) }; //, ANY("hello, world") };
 
@@ -515,18 +525,27 @@ void test_stringbuffer(void)
 #define NAME_MAX 256
 #endif
 
+<<<<<<< Updated upstream
 enum gender : uint8_t {
 	MALE,
 	FEMALE
 };
 
+=======
+>>>>>>> Stashed changes
 struct person {
 	char name[NAME_MAX];
 	int age;
 	char blog[NAME_MAX];
 	char addr[NAME_MAX];
+<<<<<<< Updated upstream
 	enum gender gender;
+=======
+	enum : byte { MALE, FEMALE } gender;
+>>>>>>> Stashed changes
 };
+
+const struct person __unused *liuhai = NULL;
 
 static void person_pretty_print(struct person *p)
 {
@@ -534,7 +553,11 @@ static void person_pretty_print(struct person *p)
 	       p->blog, p->addr);
 }
 
+<<<<<<< Updated upstream
 void do_test_json_c(const char json[static 1], struct person *)
+=======
+void do_test_jansson(const char json[static 1], struct person *__unused)
+>>>>>>> Stashed changes
 {
 	json_t *object;
 	const char *key;
@@ -581,13 +604,26 @@ void do_test_json_c(const char json[static 1], struct person *)
 	}
 }
 
-void test_json_c(void)
-{
-	const char *json =
-		R"({"name": "大大", "age": 30, "blog": "http://www.kkk.net","addr": "4414 spdd bbb"})";
-	struct person p = {};
+#define array_of(name, type, cap)                             \
+	struct array_##type {                                 \
+		size_t size;                                  \
+		type data[];                                  \
+	};                                                    \
+	struct array_##type *name =                           \
+		malloc(sizeof(*(name)) + cap * sizeof(type)); \
+	name->size = cap
 
-	do_test_json_c(json, &p);
+#define RAW(s) R"()"
+/*
+ * R"({"name": "大大", "age": 30, "blog": "http://www.kkk.net", "addr": "4414
+ * spdd bbb"})"
+ */
+void test_json_parser(void)
+{
+	const char *json = "";
+	struct person p	 = {};
+
+	do_test_jansson(json, &p);
 
 	person_pretty_print(&p);
 }
@@ -597,7 +633,7 @@ void test_any_struct(void)
 	static struct {
 		int age;
 		char name[];
-	} liulei __attribute__((aligned(8))) = {
+	} liulei = {
 		.name = "liulei",
 		.age  = 38,
 	};
@@ -607,6 +643,7 @@ void test_any_struct(void)
 	printf("sizeof(p)=%zd,alignof=%zd\n", sizeof(liulei), alignof(liulei));
 }
 
+<<<<<<< Updated upstream
 struct shared {
 	_Atomic int count;
 	_Atomic bool done;
@@ -614,11 +651,22 @@ struct shared {
 
 struct thread {
 	struct shared *shared;
+=======
+#define NR_THREADS 100
+
+struct shared {
+	int count;
+};
+
+struct thread_context {
+	struct shared _Atomic *share;
+>>>>>>> Stashed changes
 	pthread_t id;
 };
 
 void *count_self(void *arg)
 {
+<<<<<<< Updated upstream
 	struct thread *thread = arg;
 
 	nanosleep(&(struct timespec){ .tv_nsec = rand() % 1000 }, NULL);
@@ -632,10 +680,20 @@ void *count_self(void *arg)
 
 		thread->shared->done = true;
 	}
+=======
+	struct thread_context *ctx = arg;
+
+	int count = pthread_self() % 1000;
+	printf("thread %ld storing %d into shared.count\n",
+	       pthread_self() % NR_THREADS, count);
+
+	ctx->share->count++;
+>>>>>>> Stashed changes
 
 	pthread_exit(NULL);
 }
 
+<<<<<<< Updated upstream
 void test_atomic_variable(void)
 {
 	struct shared shared		  = {};
@@ -817,6 +875,25 @@ int main(void)
 		       &var, (char *)(&var + 1) - (char *)q,
 		       __builtin_classify_type(k14));
 	}
+=======
+int main(void)
+{
+	struct shared _Atomic shared		  = {};
+	struct thread_context threads[NR_THREADS] = {
+		[0 ... NR_THREADS - 1].share = &shared,
+	};
+
+	for (int i = 0; i < NR_THREADS; i++) {
+		pthread_create(&threads[i].id, NULL, count_self, &threads[i]);
+	}
+
+	for (int i = 0; i < NR_THREADS; i++) {
+		pthread_join(threads[i].id, NULL);
+	}
+	if (atomic_load(&shared).count != NR_THREADS)
+		printf("Oops!!! count = %d, expected %d\n",
+		       atomic_load(&shared).count, NR_THREADS);
+>>>>>>> Stashed changes
 
 	return 0;
 }

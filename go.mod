@@ -4,9 +4,10 @@ go 1.22
 
 require (
 	github.com/Comcast/go-leaderelection v0.0.0-20211210163058-1d7a4eade3f5
+	github.com/biter777/countries v1.7.2
 	github.com/colinmarc/hdfs v1.1.3
 	github.com/go-sql-driver/mysql v1.7.1
-	github.com/go-zookeeper/zk v1.0.2
+	github.com/go-zookeeper/zk v1.0.3
 	github.com/godaner/awdb-golang v0.0.0-20230327050545-2904112c8a45
 	github.com/google/uuid v1.3.1
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0
@@ -24,6 +25,7 @@ require (
 	github.com/rabbitmq/amqp091-go v1.9.0
 	github.com/redis/go-redis/v9 v9.0.5
 	github.com/stretchr/testify v1.8.4
+	github.com/tsuna/gohbase v0.0.0-20231212141224-c88d1874ba56
 	github.com/yaa110/goterator v0.3.0
 	go.mongodb.org/mongo-driver v1.7.5
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.45.0
@@ -84,6 +86,7 @@ require (
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/segmentio/encoding v0.3.6 // indirect
 	github.com/shirou/gopsutil/v3 v3.21.5 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.4 // indirect
 	github.com/tklauser/numcpus v0.2.1 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
@@ -100,6 +103,7 @@ require (
 	google.golang.org/genproto v0.0.0-20231012201019-e917dd12ba7a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231012201019-e917dd12ba7a // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/b/v2 v2.1.0 // indirect
 	xorm.io/builder v0.3.6 // indirect
 	xorm.io/core v0.7.2-0.20190928055935-90aeac8d08eb // indirect
 )

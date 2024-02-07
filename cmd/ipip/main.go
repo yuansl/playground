@@ -7,19 +7,8 @@ import (
 	"os"
 
 	awdb "github.com/godaner/awdb-golang/awdb-golang"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
-
-var _options struct {
-	ip     string
-	dbfile string
-}
-
-func parseOptions() {
-	flag.StringVar(&_options.ip, "ip", "", "")
-	flag.StringVar(&_options.dbfile, "awdb", "ipv4.awdb", "specify ip db file in .awdb format")
-	flag.Parse()
-}
 
 type IPInfo struct {
 	Latwgs    []byte `awdb:"latwgs"`
