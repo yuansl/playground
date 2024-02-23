@@ -1,7 +1,7 @@
 #ifndef ANY_H_X
 #define ANY_H_X
 
-#include <string.h>
+#include <stddef.h>
 
 struct type {
 	const char *name;
