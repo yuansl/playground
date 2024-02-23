@@ -35,13 +35,9 @@ char *stringify(any_t val)
 	}
 	case CHAR_PTR:
 	case UCHAR_PTR: {
-<<<<<<< Updated upstream
-		const char *value = (const char *)val->value;
-		strncpy(buf, value, sizeof(buf) - 1);
-=======
 		byte *value = val->value;
 		strncpy(buf, (const char *)value, sizeof(buf) - 1);
->>>>>>> Stashed changes
+
 		break;
 	}
 
