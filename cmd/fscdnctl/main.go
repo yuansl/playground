@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/qbox/net-deftones/fscdn.v2"
 	"github.com/qbox/net-deftones/fscdn.v2/types"
 	statfscdn "github.com/qbox/net-deftones/fusionrobot/fsrobot/stat/fscdn"
 	"github.com/qbox/net-deftones/logger"
@@ -48,7 +47,7 @@ func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []str
 	res, err := srv.GetCdnDomainsBandwidth(ctx, types.CDNProvider(cdn), domains, start, end, g, false)
 	if err != nil {
 		switch {
-		case errors.Is(err, fscdn.ErrInvalidDomain):
+		case errors.Is(err, types.ErrInvalidDomain):
 			fmt.Printf("fscdn says its a invalid domain: %v\n", err)
 		default:
 			util.Fatal(err)

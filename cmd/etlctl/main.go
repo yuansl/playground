@@ -9,15 +9,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/qbox/net-deftones/logger"
+	"github.com/yuansl/playground/util"
 )
 
 const _ETL_ENDPOINT_DEFAULT = "http://xs211:12324"
@@ -53,7 +54,7 @@ func sendRequest(ctx context.Context, req *httpRequest, res any) error {
 
 	data, _ := httputil.DumpResponse(hres, hres.StatusCode >= http.StatusBadRequest)
 
-	log.Printf("Response(raw): '%s'\n", data)
+	logger.FromContext(ctx).Warnf("Response(raw): '%s'\n", data)
 
 	return json.NewDecoder(hres.Body).Decode(res)
 }
@@ -83,11 +84,11 @@ func (r *EtlRetryRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x)
 }
 
-type EtlRetryResponse any
+type EtlRetryResponse []string
 
-func SendEtlRetryRequest(ctx context.Context, req *EtlRetryRequest) (*EtlRetryResponse, error) {
+func SendEtlRetryRequest(ctx context.Context, req *EtlRetryRequest) (EtlRetryResponse, error) {
 	var buf bytes.Buffer
-	var hres any
+	var hres EtlRetryResponse
 
 	_ = json.NewEncoder(&buf).Encode(req)
 
@@ -100,8 +101,7 @@ func SendEtlRetryRequest(ctx context.Context, req *EtlRetryRequest) (*EtlRetryRe
 		}, &hres); err != nil {
 		return nil, fmt.Errorf("sendRequest: %v", err)
 	}
-	res := hres.(EtlRetryResponse)
-	return &res, nil
+	return hres, nil
 }
 
 type DataType int
@@ -165,48 +165,67 @@ func Sync(ctx context.Context, domains []string, start, end time.Time) error {
 	return nil
 }
 
-func EtlRetry(ctx context.Context, domains []string, start, end time.Time) error {
+const ETL_RETRY_INTERVAL_MAX = 7 * 24 * time.Hour
+
+func EtlRetry(ctx context.Context, domains []string, start, end time.Time, cdn string) error {
 	if start.IsZero() || end.IsZero() {
 		return fmt.Errorf("%w: start or end must not be zero", ErrInvalid)
 	}
 
-	if res, err := SendEtlRetryRequest(ctx, &EtlRetryRequest{
-		Cdn:          "qiniucdn",
-		Domains:      domains,
-		Start:        start,
-		End:          end,
-		Force:        true,
-		Manual:       true,
-		IgnoreOnline: true,
-	}); err != nil {
-		return fmt.Errorf("EtlRetryRequest: %v => '%+v'", err, res)
+	for start0 := start; start0.Before(end); start0 = start0.Add(ETL_RETRY_INTERVAL_MAX) {
+		end0 := start0.Add(ETL_RETRY_INTERVAL_MAX)
+		if end0.After(end) {
+			end0 = end
+		}
+
+		res, err := SendEtlRetryRequest(ctx, &EtlRetryRequest{
+			Cdn:          cdn,
+			Domains:      domains,
+			Start:        start0,
+			End:          end0,
+			Force:        true,
+			Manual:       true,
+			IgnoreOnline: true,
+		})
+		if err != nil {
+			return fmt.Errorf("EtlRetryRequest: %v => '%+v'", err, res)
+		}
+		logger.FromContext(ctx).Infof("domains=%s,start=%s,end=%s,cdn=%s,etl result: %+v\n", domains, start0, end0, cdn, res)
 	}
+
 	return nil
 }
 
-var (
+var _options struct {
 	filename string
+	domains  string
 	mode     string
 	start    time.Time
 	end      time.Time
-)
+	cdn      string
+}
 
 func parseCmdArgs() {
-	flag.StringVar(&filename, "f", "", "specify domains file (csv)")
-	flag.StringVar(&mode, "mode", "etl", "specify operation type. etl|sync")
-	flag.TextVar(&start, "start", time.Time{}, "specify start time in format RFC3339")
-	flag.TextVar(&end, "end", time.Time{}, "specify end time in format RFC3339")
+	flag.StringVar(&_options.filename, "f", "", "specify domains file (csv)")
+	flag.StringVar(&_options.domains, "domains", "", "specify domains(seperate by comma)")
+	flag.StringVar(&_options.mode, "mode", "etl", "specify operation type. etl|sync")
+	flag.TextVar(&_options.start, "start", time.Time{}, "specify start time in format RFC3339")
+	flag.TextVar(&_options.end, "end", time.Time{}, "specify end time in format RFC3339")
+	flag.StringVar(&_options.cdn, "cdn", "", "specify cdn provider")
 	flag.Parse()
+
+	if _options.domains == "" {
+		fmt.Fprintf(os.Stderr, "domains must not be empty\n")
+		os.Exit(1)
+	}
+
+	if _options.cdn == "" {
+		fmt.Fprintf(os.Stderr, "cdn must not be empty\n")
+		os.Exit(1)
+	}
 }
 
-func fatal(v ...any) {
-	pc, file, line, _ := runtime.Caller(1)
-	fn := runtime.FuncForPC(pc)
-
-	fmt.Fprintln(os.Stderr, "fatal error: ", v)
-	fmt.Fprintf(os.Stderr, "%s:\n\t%s:%d\n", fn.Name(), file, line)
-	os.Exit(1)
-}
+var fatal = util.Fatal
 
 func loadDomains(filename string) []string {
 	var domains []string
@@ -236,17 +255,17 @@ func loadDomains(filename string) []string {
 func main() {
 	parseCmdArgs()
 
-	domains := loadDomains(filename)
+	domains := strings.Split(_options.domains, ",")
+	ctx := logger.NewContext(context.Background(), logger.New())
 
-	switch mode {
+	switch _options.mode {
 	case "etl":
-		if err := EtlRetry(context.TODO(), domains, start, end); err != nil {
+		if err := EtlRetry(ctx, domains, _options.start, _options.end, _options.cdn); err != nil {
 			fatal(err)
 		}
-
 	case "sync":
-		Sync(context.TODO(), domains, start, end)
+		Sync(ctx, domains, _options.start, _options.end)
 	default:
-		fatal("Unknown mode: " + mode)
+		fatal("Unknown mode: " + _options.mode)
 	}
 }
