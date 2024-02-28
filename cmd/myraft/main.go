@@ -44,9 +44,21 @@ func (state *State) HandleAppendLogEntry(ctx context.Context) (*LogEntryAck, err
 	return &LogEntryAck{Accepted: true}, nil
 }
 
+type Node struct {
+	Addr string
+	Name string
+}
+
+type VoteStatus int
+
+const (
+	VoteProgressing VoteStatus = iota
+	VoteWin
+)
+
 type VoteRequest struct {
 	Term int
-	From *State
+	From *Node
 }
 
 type VoteResponse struct {
@@ -122,8 +134,9 @@ func TryElectLeader(me *State) error {
 			me.Term += 1
 
 			var votes int
+			node0 := Node{Addr: me.Addr, Name: "A"}
 			for _, node := range me.Others {
-				res, err := SendVoteRequest(node.Addr, &VoteRequest{From: me, Term: me.Term})
+				res, err := SendVoteRequest(node.Addr, &VoteRequest{From: &node0, Term: me.Term})
 				if err != nil {
 					fmt.Printf("SendVoteRequest(node=%+v) error: %v\n", node, err)
 					continue
@@ -136,7 +149,6 @@ func TryElectLeader(me *State) error {
 				me.Role = Leader
 			}
 		case <-logch:
-
 		}
 	}
 }
