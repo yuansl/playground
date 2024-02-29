@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 	"golang.org/x/sys/unix"
 )
 

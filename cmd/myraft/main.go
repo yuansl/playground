@@ -19,8 +19,6 @@ import (
 
 	netutil "github.com/qbox/net-deftones/util"
 	"github.com/qbox/net-deftones/util/httputil"
-
-	"github.com/yuansl/playground/util"
 )
 
 type Role int
@@ -29,31 +27,6 @@ const (
 	Follower Role = iota
 	Candidate
 	Leader
-)
-
-type State struct {
-	Addr    string
-	Role    Role
-	Term    int
-	Others  []State
-	logchan chan *LogEntry
-}
-
-func (state *State) HandleAppendLogEntry(ctx context.Context) (*LogEntryAck, error) {
-	state.logchan <- &LogEntry{} // TODO:
-	return &LogEntryAck{Accepted: true}, nil
-}
-
-type Node struct {
-	Addr string
-	Name string
-}
-
-type VoteStatus int
-
-const (
-	VoteProgressing VoteStatus = iota
-	VoteWin
 )
 
 type VoteRequest struct {
@@ -67,63 +40,121 @@ type VoteResponse struct {
 	Peer  string
 }
 
+type AppendLogRequest struct {
+	PeerAddr string
+	Commited bool
+	Value    LogEntry
+}
+
+type AppendLogResponse struct {
+	Accepted bool
+}
+
+type RaftService interface {
+	HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error)
+	HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error)
+	SendHealthRequest(req *AppendLogRequest) (*AppendLogResponse, error)
+}
+
+type LogEntry struct {
+	Term  int
+	Value any
+}
+
+type State struct {
+	Addr          string
+	Leader        string
+	Role          Role
+	Term          int
+	Others        []State
+	appendlogChan chan *AppendLogRequest
+	voteFor       string
+	commited      []LogEntry
+	uncommited    []LogEntry
+}
+
+// HandleVoteRequest implements APIService.
+func (state *State) HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error) {
+	panic("unimplemented")
+}
+
+func (state *State) HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error) {
+	if state.Role != Follower || state.Leader != req.PeerAddr {
+		return nil, fmt.Errorf("Invalid state")
+	}
+	state.appendlogChan <- req
+	return &AppendLogResponse{Accepted: true}, nil
+}
+
+var _ RaftService = (*State)(nil)
+
+type Node struct {
+	Addr string
+	Name string
+}
+
+type VoteStatus int
+
+const (
+	VoteProgressing VoteStatus = iota
+	VoteWin
+)
+
 func SendVoteRequest(addr string, req *VoteRequest) (*VoteResponse, error) {
 	return &VoteResponse{Peer: "B", Voted: true}, nil
 }
 
-type HealthRequest struct {
-	PeerAddr string
-	Message  []byte
+func (*State) SendHealthRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
 }
 
-type HealthResponse struct {
-	Ack string
+func (*State) SendAppendLogPrepare(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
 }
 
-func SendHealthRequest(req *HealthRequest) (*HealthResponse, error) {
-	_ = req.PeerAddr
-	return &HealthResponse{Ack: "OKay"}, nil
-}
-
-func leaderLoop(me *State) {
+func leaderLoop(ctx context.Context, me *State) error {
 	for {
 		heartbeatTick := time.Tick(10 * time.Millisecond)
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
 		case <-heartbeatTick:
 			for _, n := range me.Others {
-				SendHealthRequest(&HealthRequest{PeerAddr: n.Addr})
+				me.SendHealthRequest(&AppendLogRequest{
+					Value: LogEntry{Term: me.Term, Value: "PING"},
+				})
+			}
+
+		case <-me.appendlogChan:
+			for _, n := range me.Others {
+				me.SendAppendLogPrepare(&AppendLogRequest{})
 			}
 		}
 	}
 }
 
-type LogEntry struct{}
-
-type LogEntryAck struct{ Accepted bool }
-
-type APIService interface {
-	HandleAppendLogEntry(ctx context.Context) (*LogEntryAck, error)
-}
-
-func RegisterHttpHandlers(ctx context.Context, srv APIService) http.Handler {
+func RegisterHttpHandlers(ctx context.Context, srv RaftService) http.Handler {
 	handler := httputil.InitHttpHandlerRegister()
 
 	handler.GET("/v1/appendlog", func(c *httputil.HttpContext) {
-		var request struct {
-			/* TODO: add missing fields */
-		}
+		var request AppendLogRequest
 		httputil.HandleRequest(c, &request, func(ctx context.Context) (any, error) {
-			return srv.HandleAppendLogEntry(ctx)
+			return srv.HandleAppendLogEntry(ctx, &request)
 		})
 	})
-	handler.GET("/v1/heartbeat", func(ctx *httputil.HttpContext) {
-		ctx.JSON(http.StatusOK, &httputil.Response{Result: "PONG"})
+	handler.GET("/v1/vote", func(c *httputil.HttpContext) {
+		var request VoteRequest
+		httputil.HandleRequest(c, &request, func(ctx context.Context) (any, error) {
+			return srv.HandleVoteRequest(ctx, &request)
+		})
 	})
+
 	return handler.(http.Handler)
 }
 
-func TryElectLeader(me *State) error {
-	logch := make(chan *LogEntry)
+func TryElectLeader(ctx context.Context, me *State) error {
+	votechan := make(chan *VoteRequest)
 
 	for {
 		electionTimer := time.NewTimer(time.Duration(rand.Int()%151+150) * time.Millisecond)
@@ -147,8 +178,14 @@ func TryElectLeader(me *State) error {
 			}
 			if votes >= len(me.Others)/2 {
 				me.Role = Leader
+				leaderLoop(ctx, me)
 			}
-		case <-logch:
+		case r := <-votechan:
+			if me.Role == Candidate || (me.Term == r.Term && me.voteFor != "") {
+				// Accepted = false
+			} else {
+				// Accepted = true
+			}
 		}
 	}
 }
@@ -159,12 +196,12 @@ func Run(ctx context.Context, state *State) error {
 	go netutil.WithContext(ctx, func() error {
 		return httputil.StartHttpServer(ctx, state.Addr, handler)
 	})
-	return TryElectLeader(state)
+	return TryElectLeader(ctx, state)
 }
 
 func main() {
 	me := State{Addr: "A", Others: []State{{Addr: "B"}, {Addr: "C"}}, Term: 0}
-	ctx := util.InitSignalHandler(context.TODO())
+	ctx := netutil.InitSignalHandler(context.TODO())
 
 	Run(ctx, &me)
 }

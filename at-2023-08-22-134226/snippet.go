@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 const _ENDPOINT_DEFAULT = "http://localhost:5140"

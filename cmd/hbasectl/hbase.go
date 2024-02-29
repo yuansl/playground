@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -11,19 +13,6 @@ import (
 
 	"github.com/qbox/net-deftones/logger"
 )
-
-type Cell struct {
-	Row          string
-	Columnfamily string
-	Timestamp    time.Time
-	Value        []byte
-}
-
-type HBase interface {
-	// Get row or cell contents. pass table name, rowkey, and optional column family
-	Get(_ context.Context, table, key string, col ...string) ([]Cell, error)
-	Delete(ctx context.Context, table, key string, col ...string) error
-}
 
 // hbaseclient implements HBase interface
 type hbaseclient struct {
@@ -81,6 +70,35 @@ func (hbase *hbaseclient) Get(ctx context.Context, table string, key string, col
 			Timestamp:    time.Unix(int64(*cell.Timestamp)/1e6, 0),
 			Value:        cell.Value,
 		})
+	}
+	return cells, nil
+}
+
+func (hbase *hbaseclient) Scan(ctx context.Context, table string, col ...string) ([]Cell, error) {
+	var cells []Cell
+
+	scan, err := hrpc.NewScan(ctx, []byte(table), hrpc.NumberOfRows(10000))
+	if err != nil {
+		return nil, fmt.Errorf("NewScan: %w", err)
+	}
+	scanner := hbase.Client.Scan(scan)
+	defer scanner.Close()
+	for {
+		row, err := scanner.Next()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return nil, fmt.Errorf("scanner.Next: %w", err)
+			}
+			break
+		}
+		for _, cell := range row.Cells {
+			cells = append(cells, Cell{
+				Row:          string(cell.Row),
+				Columnfamily: string(cell.Family) + ":" + string(cell.Qualifier),
+				Timestamp:    time.Unix(int64(*cell.Timestamp)/1e6, 0),
+				Value:        cell.Value,
+			})
+		}
 	}
 	return cells, nil
 }

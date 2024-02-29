@@ -22,8 +22,7 @@ import (
 	"strings"
 	"time"
 
-	fusionutil "github.com/qbox/net-deftones/util"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 const _NR_STAT_PER_DAY = 288
@@ -73,7 +72,7 @@ func (*trafficService) StatOf(ctx context.Context, domain string, begin time.Tim
 		} `json:"cdnProviders"`
 	}
 
-	if err := fusionutil.WithRetry(ctx, func() error {
+	if err := util.WithRetry(ctx, func() error {
 		res, err := http.Post("http://deftonestraffic.fusion.internal.qiniu.io/v2/admin/traffic/domain", "application/json", &payload)
 		if err != nil {
 			util.Fatal(err)

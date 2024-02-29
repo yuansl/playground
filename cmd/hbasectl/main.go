@@ -15,7 +15,6 @@ import (
 	"flag"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/qbox/net-deftones/fscdn.v2/types"
@@ -44,7 +43,8 @@ type CdnLogStat struct {
 }
 
 type CdnLogRepository interface {
-	Stat(ctx context.Context, cdn types.CDNProvider, start, end time.Time) ([]CdnLogStat, error)
+	FetchCdnProvidersOf(ctx context.Context, domain string, start, end time.Time) ([]string, error)
+	FetchDomainsOf(ctx context.Context, cdn types.CDNProvider, start, end time.Time) ([]string, error)
 }
 
 //go:generate stringer -type OpMode -linecomment
@@ -81,21 +81,16 @@ func inspectCdnLogTraffic(ctx context.Context, domain string, begin, end time.Ti
 	return wg.Wait()
 }
 
-func inspectCdnLogRepository(ctx context.Context, cdns []string, begin, end time.Time, repo CdnLogRepository) error {
+func inspect_cdn_hour(ctx context.Context, cdns []string, begin, end time.Time, repo CdnLogRepository) error {
 	wg, ctx := errgroup.WithContext(ctx)
-	var count atomic.Int32
-
-	defer func() {
-		logger.FromContext(ctx).Infof("cdn_hour stat: len(stat)=%d\n", count.Load())
-	}()
 
 	for _, cdn := range cdns {
 		wg.Go(func() error {
-			stat, err := repo.Stat(ctx, types.CDNProvider(cdn), begin, end)
+			domains, err := repo.FetchDomainsOf(ctx, types.CDNProvider(cdn), begin, end)
 			if err != nil {
-				return fmt.Errorf("LogRepository.Stat: %+v\n", err)
+				return fmt.Errorf("LogRepository.FetchDomainsOf: %+v\n", err)
 			}
-			count.Add(int32(len(stat)))
+			logger.FromContext(ctx).Infof("There are %d domains serviced by cdn %s between %s and %s\n", len(domains))
 
 			return nil
 		})
@@ -103,17 +98,33 @@ func inspectCdnLogRepository(ctx context.Context, cdns []string, begin, end time
 	return wg.Wait()
 }
 
+func inspect_domain_hour(ctx context.Context, domains []string, begin, end time.Time, repo CdnLogRepository) error {
+	wg, ctx := errgroup.WithContext(ctx)
+
+	for _, domain := range domains {
+		wg.Go(func() error {
+			cdns, err := repo.FetchCdnProvidersOf(ctx, domain, begin, end)
+			if err != nil {
+				return fmt.Errorf("LogRepository.FetchCdnProvidersOf: %+v\n", err)
+			}
+			logger.FromContext(ctx).Infof("There are %d provide cdn service for domain %s between %s and %s\n", len(cdns), domain, begin, end)
+			return nil
+		})
+	}
+	return wg.Wait()
+}
+
 var _options struct {
-	domain string
-	begin  time.Time
-	end    time.Time
-	cdn    string
-	host   string
-	mode   OpMode
+	domains string
+	begin   time.Time
+	end     time.Time
+	cdn     string
+	host    string
+	mode    OpMode
 }
 
 func parseOptions() {
-	flag.StringVar(&_options.domain, "domains", "file.yalla.live", "specify domains(sperate by comma)")
+	flag.StringVar(&_options.domains, "domains", "file.yalla.live", "specify domains(sperate by comma)")
 	flag.TextVar(&_options.begin, "begin", time.Time{}, "specify begin time in RFC3339 format")
 	flag.TextVar(&_options.end, "end", time.Time{}, "specify end time in RFC3339 format")
 	flag.StringVar(&_options.cdn, "cdn", string(types.CDNProviderBaishanyun), "specify cdn provider(seperate by comma)")
@@ -141,7 +152,13 @@ func main() {
 
 	defer hbase.Close()
 
-	inspectCdnLogRepository(ctx, strings.Split(_options.cdn, ","), _options.begin, _options.end, logfilerepo)
+	if _options.domains != "" {
+		inspect_domain_hour(ctx, strings.Split(_options.domains, ","), _options.begin, _options.end, logfilerepo)
+	}
+
+	if _options.cdn != "" {
+		inspect_cdn_hour(ctx, strings.Split(_options.cdn, ","), _options.begin, _options.end, logfilerepo)
+	}
 
 	// for _, domain := range strings.Split(_options.domain, ",") {
 	// err := InspectCdnLogTraffic(ctx, domain, _options.begin, _options.end, cdn, _options.mode, trafficrepo)

@@ -10,7 +10,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 type TracerProvider interface {

@@ -15,7 +15,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 //go:embed ls

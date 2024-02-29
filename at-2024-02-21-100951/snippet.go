@@ -17,7 +17,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	sql "github.com/jmoiron/sqlx"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 func main() {

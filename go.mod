@@ -19,7 +19,7 @@ require (
 	github.com/marcboeker/go-duckdb v1.5.6
 	github.com/parquet-go/parquet-go v0.0.0-20230713212203-3d3ee2af9ab7
 	github.com/prometheus/client_golang v1.17.0
-	github.com/qbox/net-deftones v1.3.0
+	github.com/qbox/net-deftones v1.3.2
 	github.com/qiniu/go-sdk/v7 v7.17.0
 	github.com/rabbitmq/amqp091-go v1.9.0
 	github.com/redis/go-redis/v9 v9.0.5
@@ -50,6 +50,7 @@ require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/biter777/countries v1.7.2 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect

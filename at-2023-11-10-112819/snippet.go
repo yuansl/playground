@@ -20,7 +20,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 const _NR_FIELDS_LINE = 46

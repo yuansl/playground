@@ -19,6 +19,7 @@ func convertIpv4(qip string) error {
 	cmd := exec.Command(qip, "pack", "-s", "ipv4.awdb", "-l", "ipline.awdb", "--ipipFile", "ipv4.ipdb", "-f", "country,province,city,owner_domain,isp,latitude,longitude,timezone,utc_offset,china_admin_code,idd_code,country_code,continent_code|country=中国:country,province,city,,isp,,,,,,,areacode,continent_code|country,,,,,,,,,,,areacode,continent_code", "-o", "neo.ipv4.ipdb")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "QIP_CONFIG_PATH=/tmp")
 	return cmd.Run()
 }
 
@@ -28,6 +29,7 @@ func convertIpv6(qip string) error {
 	cmd := exec.Command(qip, "pack", "-s", "ipv6.awdb", "-f", "country,province,city,owner_domain,isp,latitude,longitude,timezone,utc_offset,china_admin_code,idd_code,country_code,continent_code|country=中国:country,province,city,,isp,,,,,,,areacode,continent_code|country,,,,,,,,,,,areacode,continent_code", "-o", "neo.ipv6.ipdb")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "QIP_CONFIG_PATH=/tmp")
 	return cmd.Run()
 }
 

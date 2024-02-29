@@ -16,7 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 var _bytesPoolNewCounter atomic.Int64

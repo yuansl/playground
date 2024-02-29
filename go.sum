@@ -79,6 +79,8 @@ github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZx
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+github.com/biter777/countries v1.7.2 h1:sEnpwvVggSCpKBc+PGrzEkIOkoze/n93DzfxvucRAsg=
+github.com/biter777/countries v1.7.2/go.mod h1:1HSpZ526mYqKJcpT5Ti1kcGQ0L0SrXWIaptUWjFfv2E=
 github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBTaaSFSlLx/70C2HPIMNZpVV8+vt/A+FMnYP11g=
 github.com/bsm/ginkgo/v2 v2.7.0 h1:ItPMPH90RbmZJt5GtkcNvIRuGEdwlBItdNVoyzaNQao=
 github.com/bsm/ginkgo/v2 v2.7.0/go.mod h1:AiKlXPm7ItEHNc/2+OkrNG4E0ITzojb9/xWzvQ9XZ9w=
@@ -413,8 +415,8 @@ github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R
 github.com/prometheus/procfs v0.0.0-20190117184657-bf6a532e95b1/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.11.1 h1:xRC8Iq1yyca5ypa9n1EZnWZkt7dwcoRPQwX/5gwaUuI=
 github.com/prometheus/procfs v0.11.1/go.mod h1:eesXgaPo1q7lBpVMoMy0ZOFTth9hBn4W/y0/p/ScXhY=
-github.com/qbox/net-deftones v1.3.0 h1:JRHi9SSaL/6Iy6X4ZmoVbRGcOy8lVwwUW+PhIMVxMa0=
-github.com/qbox/net-deftones v1.3.0/go.mod h1:88negbaGJdK2kjxP4TmEKwbtO4AH59mconCGXyhM0uA=
+github.com/qbox/net-deftones v1.3.2 h1:X7S9dXKPz0ewOYodd6ysNHl38qLBYGg0bPbtN2vLE8M=
+github.com/qbox/net-deftones v1.3.2/go.mod h1:w94lX7jKqGmbyX7xPLq0uHSUfosyBLXdTuy9CgnSXJk=
 github.com/qbox/pili v0.0.0-20210422023650-0c77149ec707 h1:IKH7SSW8MRneHUw6tJSc6p5GEG6l4+j064Rhgz0GZkg=
 github.com/qbox/pili v0.0.0-20210422023650-0c77149ec707/go.mod h1:RrkUM/N+VGKga3ZO83kZz4MRyJAWAsIuzfIEhjGSNmg=
 github.com/qiniu/dyn v1.3.0/go.mod h1:E8oERcm8TtwJiZvkQPbcAh0RL8jO1G0VXJMW3FAWdkk=
