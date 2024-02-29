@@ -11,16 +11,16 @@
 package main
 
 import (
-	"errors"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
-	"net"
+	"strings"
 	"time"
 
-	"github.com/jlaffaye/ftp"
+	"github.com/yuansl/playground/util"
 )
 
 var options struct {
@@ -28,184 +28,107 @@ var options struct {
 	ftpaddr        string
 	user           string
 	password       string
+	startkey       string
+	endkey         string
 }
 
 func parseCmdOptions() {
 	flag.StringVar(&options.ftpaddr, "addr", "115.238.46.167:21", "specify address of ftp server")
 	flag.StringVar(&options.user, "user", "qiniup", "ftp user")
 	flag.StringVar(&options.password, "passwd", "9Z3AMF3Q", "ftp password")
-	flag.DurationVar(&options.connectTimeout, "timeout", 50*time.Second, "specify connect timeout in seconds")
+	flag.DurationVar(&options.connectTimeout, "timeout", 1800*time.Second, "specify connect timeout in seconds")
+	flag.StringVar(&options.startkey, "start", "a", "start key")
+	flag.StringVar(&options.endkey, "end", "z", "end key")
 	flag.Parse()
 }
 
-func listFTPServer(ftpcli *ftp.ServerConn, path string) []*ftp.Entry {
-	ents, err := ftpcli.List(path)
+type FTPClient interface {
+	Chdir(path string) error
+	Put(local io.Reader, remotepath string) error
+	Get(path string) ([]byte, error)
+	List(path ...string) ([]fs.DirEntry, error)
+	Delete(path string) error
+	Mkdir(path string) error
+	Rmdir(path string) error
+	Quit() error
+}
+
+func WalkFTPDirectory(dirent fs.DirEntry, ftp FTPClient, callbackf func(fs.DirEntry)) {
+	fmt.Printf("cd %s\n", dirent.Name())
+	err := ftp.Chdir(dirent.Name())
 	if err != nil {
-		log.Fatal("😡😤 ftp.List: ", err)
+		util.Fatal("cd %s failed: %v\n", dirent.Name(), err)
+	}
+	ents, err := ftp.List()
+	if err != nil {
+		util.Fatal("ls failed: %v\n", err)
 	}
 	for _, ent := range ents {
-		ent.Time = ent.Time.Local()
-		fmt.Printf("  file entry: '%+v' 🍺🎉\n", ent)
+		if ent.IsDir() {
+			WalkFTPDirectory(ent, ftp, callbackf)
+		} else {
+			callbackf(ent)
+		}
 	}
-	return ents
-}
-
-type ftpclient struct {
-	conn *ftp.ServerConn
-}
-
-type FtpFile struct{ *DirEntry }
-
-// ModTime implements fs.FileInfo.
-func (f *FtpFile) ModTime() time.Time {
-	return f.ftp.Time
-}
-
-// Mode implements fs.FileInfo.
-func (f *FtpFile) Mode() fs.FileMode {
-	return f.DirEntry.Type()
-}
-
-// Size implements fs.FileInfo.
-func (*FtpFile) Size() int64 {
-	panic("unimplemented")
-}
-
-// Sys implements fs.FileInfo.
-func (*FtpFile) Sys() any {
-	panic("unimplemented")
-}
-
-var _ fs.FileInfo = (*FtpFile)(nil)
-
-type DirEntry struct {
-	ftp  *ftp.Entry
-	mode fs.FileMode
-}
-
-// Info implements fs.DirEntry.
-func (ent *DirEntry) Info() (fs.FileInfo, error) {
-	return &FtpFile{DirEntry: ent}, nil
-}
-
-// IsDir implements fs.DirEntry.
-func (ent *DirEntry) IsDir() bool {
-	return ent.Type().IsDir()
-}
-
-// Name implements fs.DirEntry.
-func (ent *DirEntry) Name() string {
-	return ent.ftp.Name
-}
-
-// Type implements fs.DirEntry.
-func (ent *DirEntry) Type() fs.FileMode {
-	return ent.mode
-}
-
-var _ fs.DirEntry = (*DirEntry)(nil)
-
-func NewDirEntry(ent *ftp.Entry) *DirEntry {
-	var mode fs.FileMode
-	switch ent.Type {
-	case ftp.EntryTypeFile:
-		mode |= fs.ModeIrregular
-	case ftp.EntryTypeFolder:
-		mode |= fs.ModeDir
-	case ftp.EntryTypeLink:
-		mode |= fs.ModeSymlink
-	default:
+	if err := ftp.Chdir("../"); err != nil {
+		util.Fatal("cd ../ failed: %v\n", err)
 	}
-	return &DirEntry{ftp: ent, mode: mode}
+	fmt.Printf("rmdir %s\n", dirent.Name())
+	if err := ftp.Rmdir(dirent.Name()); err != nil {
+		fmt.Printf("rmdir %s failed: %v\n", dirent.Name(), err)
+	}
 }
 
-func (cli *ftpclient) List(path ...string) ([]fs.DirEntry, error) {
-	var dirents []fs.DirEntry
-	var dir string
+type DomainTime struct {
+	Domain string
+	time.Time
+}
 
-	if len(path) == 0 {
-		dir = "./"
-	} else {
-		dir = path[0]
-	}
-	ents, err := cli.conn.List(dir)
+func run(_ context.Context, ftp FTPClient) {
+	// var perDomainFile = make(map[DomainTime]struct{})
+	ents, err := ftp.List()
 	if err != nil {
-		return nil, fmt.Errorf("List: %v", err)
+		log.Fatal("ftpcli.List:", err)
 	}
-	for _, ent := range ents {
-		dirents = append(dirents, NewDirEntry(ent))
+	for _, dirent := range ents {
+		if dirent.IsDir() && !strings.HasSuffix(dirent.Name(), ".cztv.com") {
+			WalkFTPDirectory(dirent, ftp, func(file fs.DirEntry) {
+				// fmt.Printf("file %s\n", entfile.Name())
+				// timestamp, err := time.Parse("2006-01-02_15:04", file.Name()[:16])
+				// if err != nil {
+				// 	util.Fatal("invalid time parnttern: %q", file.Name())
+				// }
+
+				// fixedTime := time.Date(timestamp.Year(), timestamp.Month(), timestamp.Day(), timestamp.Hour(), 0, 0, 0, timestamp.Location())
+				// perDomainFile[DomainTime{Domain: dirent.Name(), Time: fixedTime}] = struct{}{}
+
+				fmt.Printf("delete %s\n", file.Name())
+				if err := ftp.Delete(file.Name()); err != nil {
+					util.Fatal("delete %s failed: %v\n", dirent.Name(), err)
+				}
+			})
+		}
+
 	}
-	return dirents, nil
-}
+	// var perDomainTimes = make(map[string][]time.Time)
+	// for key := range perDomainFile {
+	// 	perDomainTimes[key.Domain] = append(perDomainTimes[key.Domain], key.Time)
+	// }
+	// for domain, times := range perDomainTimes {
+	// 	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	// 	perDomainTimes[domain] = times
+	// }
 
-func (*ftpclient) Mkdir(path string) error {
-	return errors.ErrUnsupported
-}
-
-func (*ftpclient) Delete(path string) error {
-	return errors.ErrUnsupported
-}
-
-func (*ftpclient) Get(path string) ([]byte, error) {
-	return nil, errors.ErrUnsupported
-}
-
-func (*ftpclient) Put(local io.Reader, remotepath string) error {
-	return errors.ErrUnsupported
-}
-
-func (cli *ftpclient) Cd(path string) error {
-	return cli.conn.ChangeDir(path)
-}
-
-func (cli *ftpclient) Close() error {
-	return cli.conn.Quit()
-}
-
-func Connect(addr, user, password string) *ftpclient {
-	serverConn, err := ftp.Dial(options.ftpaddr,
-		ftp.DialWithTimeout(options.connectTimeout),
-		ftp.DialWithDisabledEPSV(true),
-		ftp.DialWithDialFunc(func(network, address string) (net.Conn, error) {
-			log.Printf("connecting to %s (timeout=%s) ...\n", address, options.connectTimeout)
-			return net.DialTimeout(network, address, options.connectTimeout)
-		}))
-	if err != nil {
-		log.Fatal("ftp.Dial:", err)
-	}
-
-	if err = serverConn.Login(options.user, options.password); err != nil {
-		log.Fatal("ftp.Login:", err)
-	}
-
-	return &ftpclient{conn: serverConn}
-}
-
-func prettyPrintFtpEntry(ents []fs.DirEntry) {
-	for _, ent := range ents {
-		fmt.Printf("entry: '%+v'\n", fs.FormatDirEntry(ent))
-	}
+	// for domain, times := range perDomainTimes {
+	// 	fmt.Printf("domain:%s, timestamps:%v\n", domain, times)
+	// }
 }
 
 func main() {
 	parseCmdOptions()
 
-	ftpcli := Connect(options.ftpaddr, options.user, options.password)
-	defer ftpcli.Close()
+	ftp := Login(options.ftpaddr, options.user, options.password)
+	defer ftp.Quit()
 
-	ents, err := ftpcli.List("/")
-	if err != nil {
-		log.Fatal("ftpcli.List:", err)
-	}
-	prettyPrintFtpEntry(ents)
-	if len(ents) > 0 {
-		if err = ftpcli.Cd("/qiniup-v.cztv.com/2023-12-25"); err != nil {
-			log.Fatalf("ftp: cd: %v", err)
-		}
-		ents, err = ftpcli.List("./")
-		if err != nil {
-			log.Fatal("ftpcli.List:", err)
-		}
-		prettyPrintFtpEntry(ents)
-	}
+	run(context.TODO(), ftp)
 }
