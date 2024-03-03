@@ -55,7 +55,7 @@ func NewLogsysRepository(validationRepo LogValidationRepository, etlRepo LogEtlR
 }
 
 func run(ctx context.Context, repo LogsysRepository) {
-	egroup, ctx := errgroup.WithContext(ctx)
+	wg, ctx := errgroup.WithContext(ctx)
 
 	for day := _begin; day.Before(_end); day = day.AddDate(0, 0, +1) {
 		_day, _day_next := day, day.AddDate(0, 0, +1)
@@ -66,11 +66,11 @@ func run(ctx context.Context, repo LogsysRepository) {
 
 		// fmt.Printf("got %d log-validation infos of day %v\n", len(infos), day)
 
-		egroup.Go(func() error {
+		wg.Go(func() error {
 			return repo.DeleteEtlTasks(ctx, _day, _day_next)
 		})
 	}
-	egroup.Wait()
+	wg.Wait()
 
 }
 

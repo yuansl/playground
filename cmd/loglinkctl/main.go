@@ -10,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/qbox/net-deftones/logger"
@@ -18,12 +17,13 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/cmd/loglinkctl/repository"
+	"github.com/yuansl/playground/cmd/loglinkctl/repository/fusionlog"
 	"github.com/yuansl/playground/oss/kodo"
 )
 
 const _PRIVATE_URL_EXPIRY_DEFAULT = 2 * 31 * 24 * time.Hour // 2 month
 
-var _options struct {
+var options struct {
 	accessKey, secretKey string
 	linkdomain           string
 	mongouri             string
@@ -32,29 +32,37 @@ var _options struct {
 	begin                time.Time
 	end                  time.Time
 	verbose              bool
-	_continue            bool
+	continueOnError      bool
 }
 
 func init() {
-	_options.accessKey = os.Getenv("ACCESS_KEY")
-	_options.secretKey = os.Getenv("SECRET_KEY")
+	options.accessKey = os.Getenv("ACCESS_KEY")
+	options.secretKey = os.Getenv("SECRET_KEY")
 }
 
-func parseCmdOptions() {
-	flag.StringVar(&_options.linkdomain, "linkdomain", "https://fusionlog.qiniu.com", "specify kodo link domain")
-	flag.StringVar(&_options.mongouri, "mongouri", "mongodb://127.0.0.1:27017/fusionlogv2", "specify mongo connect string")
-	flag.TextVar(&_options.begin, "begin", time.Time{}, "begin time (in RFC3339)")
-	flag.TextVar(&_options.end, "end", time.Time{}, "end time (in RFC3339)")
-	flag.StringVar(&_options.domains, "domains", "", "specify domain (seperate by comma)")
-	flag.StringVar(&_options.bucket, "bucket", "fusionlog", "specify (kodo)bucket name")
-	flag.BoolVar(&_options.verbose, "v", false, "verbose")
-	flag.BoolVar(&_options._continue, "c", false, "whether continue or stop on error")
+func parseOptions() {
+	flag.StringVar(&options.linkdomain, "linkdomain", "https://fusionlog.qiniu.com", "specify kodo link domain")
+	flag.StringVar(&options.mongouri, "mongouri", "mongodb://127.0.0.1:27017/fusionlogv2", "specify mongo connect string")
+	flag.TextVar(&options.begin, "begin", time.Time{}, "begin time (in RFC3339)")
+	flag.TextVar(&options.end, "end", time.Time{}, "end time (in RFC3339)")
+	flag.StringVar(&options.domains, "domains", "", "specify domain (seperate by comma)")
+	flag.StringVar(&options.bucket, "bucket", "fusionlog", "specify (kodo)bucket name")
+	flag.BoolVar(&options.verbose, "v", false, "verbose")
+	flag.BoolVar(&options.continueOnError, "c", false, "whether continue or stop on error")
 	flag.Parse()
+
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s -begin <begin> -end <end>\n", os.Args[0])
+		os.Exit(1)
+	}
+	if options.begin.After(options.end) || options.end.IsZero() {
+		util.Fatal("Invalid time range")
+	}
 }
 
 func RefreshLoglinks(ctx context.Context, links []repository.LogLink, storage *kodo.StorageService, repo repository.LinkRepository) {
 	for _, link := range links {
-		newUrl := storage.UrlOfKey(ctx, _options.bucket, link.Name, kodo.WithPrivateUrlExpiry(_PRIVATE_URL_EXPIRY_DEFAULT))
+		newUrl := storage.UrlOfKey(ctx, options.bucket, link.Name, kodo.WithPrivateUrlExpiry(_PRIVATE_URL_EXPIRY_DEFAULT))
 		if err := repo.SetDownloadUrl(ctx, &link, newUrl); err != nil {
 			util.Fatal(err)
 		}
@@ -88,81 +96,64 @@ func InspectLogLink(ctx context.Context, link *repository.LogLink) error {
 func Run(ctx context.Context, domains []string, begin, end time.Time, repo repository.LinkRepository) error {
 	log := logger.FromContext(ctx)
 	wg, ctx := errgroup.WithContext(ctx)
-	var counter atomic.Int32
-
-	go func() {
-		for range time.Tick(1 * time.Second) {
-			log.Infof("inspected %d link\n", counter.Load())
-		}
-	}()
 
 	for _, domain := range domains {
-		_domain := domain
 		wg.Go(func() error {
-			return util.WithContext(ctx, func() error {
-				links, err := repo.GetLinks(ctx, _domain, begin, end, repository.BusinessCdn)
-				if err != nil {
-					return fmt.Errorf("repo.GetLinks: %v", err)
-				}
+			links, err := repo.GetLinks(ctx, begin, end,
+				&repository.LinkOptions{
+					Domain:   domain,
+					Business: repository.BusinessCdn,
+					Filter: func(link *repository.LogLink) bool {
+						return !strings.HasPrefix(link.Url, "http") && (begin.Compare(link.Timestamp) <= 0 && link.Timestamp.Before(end) && !strings.Contains(link.Name, "cztv"))
+					},
+				})
+			if err != nil {
+				return fmt.Errorf("repo.GetLinks: %v", err)
+			}
+			log.Infof("got %d log links between %s and %s of domain '%s'\n",
+				len(links), begin, end, domain)
 
-				log.Infof("got %d log links between %s and %s of domain '%s'\n",
-					len(links), begin, end, _domain)
+			for _, link := range links {
+				wg.Go(func() error {
+					log.Infof("%+v\n", link)
 
-				for _, link := range links {
-					_link := link
-					wg.Go(func() error {
-						defer counter.Add(+1)
-						log.Infof("Inspecting link %+v ...\n", _link)
-
-						err := InspectLogLink(ctx, &_link)
+					/*
+						err := InspectLogLink(ctx, &link)
 						if err != nil {
 							fmt.Print(err)
-							if _options._continue {
+							if options._continue {
 								return nil
 							}
 						}
-						return nil
-					})
-				}
-				return nil
-			})
+					*/
+					return nil
+				})
+			}
+			return repo.DeleteLinks(ctx, links...)
 		})
 	}
 	return wg.Wait()
 }
 
 func main() {
-	parseCmdOptions()
+	parseOptions()
 
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s -begin <begin> -end <end>\n", os.Args[0])
-		os.Exit(1)
-	}
-	if _options.begin.After(_options.end) || _options.end.IsZero() {
-		util.Fatal("Invalid time range")
-	}
-	if _options.secretKey == "" || _options.accessKey == "" {
-		util.Fatal("either access key or secret key must not be empty")
-	}
-	if _options.domains == "" {
-		util.Fatal("domain can not be empty")
-	}
-
-	repo, err := repository.NewMongoLinkRepository(_options.mongouri)
+	repo, err := fusionlog.NewLinkRepository(fusionlog.NewFusionlogdb(options.mongouri))
 	if err != nil {
-		util.Fatal("NewMongoLinkRepository:", err)
+		util.Fatal("NewLinkRepository:", err)
 	}
 	ctx := context.Background()
-
-	if _options.verbose {
+	if options.verbose {
 		ctx = logger.NewContext(ctx, logger.New())
 	}
 	ctx = util.InitSignalHandler(ctx)
 
-	err = Run(ctx, strings.Split(_options.domains, ","), _options.begin, _options.end, repo)
+	err = Run(ctx, strings.Split(options.domains, ","), options.begin, options.end, repo)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		switch {
+		case errors.Is(err, context.Canceled):
 			err = context.Cause(ctx)
+		default:
 		}
 		util.Fatal("Run:", err)
 	}

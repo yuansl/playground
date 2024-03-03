@@ -17,9 +17,12 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/qbox/net-deftones/stream"
 	"github.com/yuansl/playground/util"
 )
 
@@ -42,7 +45,7 @@ func parseCmdOptions() {
 	flag.Parse()
 }
 
-type FTPClient interface {
+type FTPService interface {
 	Chdir(path string) error
 	Put(local io.Reader, remotepath string) error
 	Get(path string) ([]byte, error)
@@ -53,8 +56,8 @@ type FTPClient interface {
 	Quit() error
 }
 
-func WalkFTPDirectory(dirent fs.DirEntry, ftp FTPClient, callbackf func(fs.DirEntry)) {
-	fmt.Printf("cd %s\n", dirent.Name())
+func WalkFTPDirectory(dirent fs.DirEntry, deleteWalk bool, ftp FTPService, callbackf func(fs.DirEntry)) {
+	// fmt.Printf("cd %s\n", dirent.Name())
 	err := ftp.Chdir(dirent.Name())
 	if err != nil {
 		util.Fatal("cd %s failed: %v\n", dirent.Name(), err)
@@ -65,7 +68,9 @@ func WalkFTPDirectory(dirent fs.DirEntry, ftp FTPClient, callbackf func(fs.DirEn
 	}
 	for _, ent := range ents {
 		if ent.IsDir() {
-			WalkFTPDirectory(ent, ftp, callbackf)
+			if strings.HasPrefix(ent.Name(), "2024-02") {
+				WalkFTPDirectory(ent, deleteWalk, ftp, callbackf)
+			}
 		} else {
 			callbackf(ent)
 		}
@@ -73,9 +78,12 @@ func WalkFTPDirectory(dirent fs.DirEntry, ftp FTPClient, callbackf func(fs.DirEn
 	if err := ftp.Chdir("../"); err != nil {
 		util.Fatal("cd ../ failed: %v\n", err)
 	}
-	fmt.Printf("rmdir %s\n", dirent.Name())
-	if err := ftp.Rmdir(dirent.Name()); err != nil {
-		fmt.Printf("rmdir %s failed: %v\n", dirent.Name(), err)
+
+	if deleteWalk {
+		fmt.Printf("rmdir %s\n", dirent.Name())
+		if err := ftp.Rmdir(dirent.Name()); err != nil {
+			fmt.Printf("rmdir %s failed: %v\n", dirent.Name(), err)
+		}
 	}
 }
 
@@ -84,50 +92,134 @@ type DomainTime struct {
 	time.Time
 }
 
-func run(_ context.Context, ftp FTPClient) {
-	// var perDomainFile = make(map[DomainTime]struct{})
+func deleteWalkDir(dirent fs.DirEntry) bool {
+	return !strings.HasSuffix(dirent.Name(), ".cztv.com") && !strings.Contains(dirent.Name(), "cztv")
+}
+
+const _POINTS_PER_DAY = 24 * 12
+const _POINTS_PER_MONTH = 29 * _POINTS_PER_DAY
+
+func aggregate(domaintimes *stream.Pair[string, any], missedhours *util.Set[DomainTime]) {
+	times := domaintimes.Value.([]DomainTime)
+	if llen := len(times); llen < _POINTS_PER_MONTH {
+		fmt.Printf("domain:%s missing some files: expected %d, actual: %d\n", domaintimes.Key, _POINTS_PER_MONTH, llen)
+
+		filecountof := func(alignas time.Duration) []stream.Pair[time.Time, any] {
+			count := stream.StreamOf[DomainTime, time.Time, int](times).
+				GroupBy(func(t DomainTime) time.Time {
+					return alignoftime(t.Time, alignas).Local()
+				}).
+				ReduceByKey(
+					func(pair stream.Pair[time.Time, any]) stream.Pair[time.Time, []int] {
+						var counts = make([]int, 0, len(pair.Value.([]time.Ticker)))
+						for range pair.Value.([]time.Time) {
+							counts = append(counts, +1)
+						}
+						return stream.Pair[time.Time, []int]{Key: pair.Key, Value: counts}
+					},
+					stream.BinaryOpFn[int](func(a, b int) int { return a + b }),
+				).
+				Collect() // []{{time.Time -> per-time-counter}, ...}
+
+			sort.Slice(count, func(i, j int) bool {
+				return count[i].Key.Before(count[j].Key)
+			})
+			return count
+		}
+
+		perdayfilecount := filecountof(24 * time.Hour)
+
+		start := time.Date(2024, 2, 1, 0, 0, 0, 0, time.Local)
+		end := start.AddDate(0, +1, 0)
+		sameday := func(t1, t2 time.Time) bool {
+			return t1.Year() == t2.Year() && t2.Month() == t2.Month() && t1.Day() == t2.Day()
+		}
+		for day := start; day.Before(end); day = day.Add(24 * time.Hour) {
+			index := slices.IndexFunc(perdayfilecount, func(e stream.Pair[time.Time, any]) bool { return sameday(e.Key, day) })
+			if index == -1 || perdayfilecount[index].Value.(int) != _POINTS_PER_DAY {
+				if index == -1 {
+					for hour := day; hour.Before(day.Add(24 * time.Hour)); hour = hour.Add(time.Hour) {
+						missedhours.Add(DomainTime{domaintimes.Key, hour})
+					}
+				} else {
+					perhourfilecount := filecountof(time.Hour)
+
+					for hour := day; hour.Before(day.Add(24 * time.Hour)); hour = hour.Add(time.Hour) {
+						index := slices.IndexFunc(perdayfilecount, func(e stream.Pair[time.Time, any]) bool {
+							return sameday(e.Key, day) && e.Key.Hour() == hour.Hour()
+						})
+						if index == -1 || perhourfilecount[index].Value.(int) != 12 {
+							missedhours.Add(DomainTime{Domain: domaintimes.Key, Time: hour})
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func stat(domains *util.Set[DomainTime]) {
+	missedhours := util.NewSet[DomainTime]()
+
+	stream.StreamOf[DomainTime, string, time.Time](domains.List()).
+		GroupBy(func(d DomainTime) string {
+			return d.Domain
+		}). // []{{Domain -> []DomainTime}}
+	ForEach(stream.ConsumerFn[*stream.Pair[string, any]](
+		func(pair *stream.Pair[string, any]) { // Domain -> []DomainTime
+			times := pair.Value.([]DomainTime)
+			sort.Slice(times, func(i, j int) bool { return times[i].Time.Before(times[j].Time) })
+			pair.Value = times
+
+			aggregate(pair, missedhours)
+		}))
+
+	for _, it := range missedhours.List() {
+		fmt.Printf("%s,%v\n", it.Domain, it.Time.Format("2006-01-02T15:04"))
+	}
+}
+
+func run(_ context.Context, ftp FTPService) {
+	domains := util.NewSet[DomainTime]()
 	ents, err := ftp.List()
 	if err != nil {
 		log.Fatal("ftpcli.List:", err)
 	}
+	filter := func(dirent fs.DirEntry) bool {
+		return strings.Contains(dirent.Name(), "cztv")
+	}
 	for _, dirent := range ents {
-		if dirent.IsDir() && !strings.HasSuffix(dirent.Name(), ".cztv.com") {
-			WalkFTPDirectory(dirent, ftp, func(file fs.DirEntry) {
-				// fmt.Printf("file %s\n", entfile.Name())
-				// timestamp, err := time.Parse("2006-01-02_15:04", file.Name()[:16])
-				// if err != nil {
-				// 	util.Fatal("invalid time parnttern: %q", file.Name())
-				// }
+		if dirent.IsDir() && filter(dirent) {
+			WalkFTPDirectory(dirent, deleteWalkDir(dirent), ftp, func(file fs.DirEntry) {
+				// fmt.Printf("file %s\n", file.Name())
 
-				// fixedTime := time.Date(timestamp.Year(), timestamp.Month(), timestamp.Day(), timestamp.Hour(), 0, 0, 0, timestamp.Location())
-				// perDomainFile[DomainTime{Domain: dirent.Name(), Time: fixedTime}] = struct{}{}
+				if strings.HasSuffix(file.Name(), ".md5sum") {
+					return
+				}
+				timestamp, err := time.ParseInLocation("2006-01-02_15:04", file.Name()[:16], time.Local)
+				if err != nil {
+					util.Fatal("invalid time parnttern: %q", file.Name())
+				}
+				fixedTime := alignoftime(timestamp, 5*time.Minute)
 
-				fmt.Printf("delete %s\n", file.Name())
-				if err := ftp.Delete(file.Name()); err != nil {
-					util.Fatal("delete %s failed: %v\n", dirent.Name(), err)
+				domains.Add(DomainTime{Domain: dirent.Name(), Time: fixedTime.Local()})
+
+				if deleteWalkDir(dirent) {
+					fmt.Printf("delete %s\n", file.Name())
+					if err := ftp.Delete(file.Name()); err != nil {
+						util.Fatal("delete %s failed: %v\n", dirent.Name(), err)
+					}
 				}
 			})
 		}
-
 	}
-	// var perDomainTimes = make(map[string][]time.Time)
-	// for key := range perDomainFile {
-	// 	perDomainTimes[key.Domain] = append(perDomainTimes[key.Domain], key.Time)
-	// }
-	// for domain, times := range perDomainTimes {
-	// 	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
-	// 	perDomainTimes[domain] = times
-	// }
-
-	// for domain, times := range perDomainTimes {
-	// 	fmt.Printf("domain:%s, timestamps:%v\n", domain, times)
-	// }
+	stat(domains)
 }
 
 func main() {
 	parseCmdOptions()
 
-	ftp := Login(options.ftpaddr, options.user, options.password)
+	ftp := Login(options.ftpaddr, options.user, options.password, options.connectTimeout)
 	defer ftp.Quit()
 
 	run(context.TODO(), ftp)

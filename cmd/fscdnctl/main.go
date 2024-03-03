@@ -13,27 +13,27 @@ import (
 	"github.com/qbox/net-deftones/util"
 )
 
-var (
-	_domain         string
-	_begin          time.Time
-	_end            time.Time
-	_cdn            string
-	_granularity    string
-	_grpcServerAddr string
-)
+var options struct {
+	domain      string
+	begin       time.Time
+	end         time.Time
+	cdn         string
+	granularity string
+	grpcServer  string
+}
 
-func parseCmdArgs() {
-	flag.StringVar(&_domain, "domain", "www.example.com", "specify cdn domain")
-	flag.TextVar(&_begin, "begin", time.Time{}, "specify begin time (in RFC3339 format)")
-	flag.TextVar(&_end, "end", time.Time{}, "specify end time (in RFC3339 format)")
-	flag.StringVar(&_cdn, "cdn", "qiniucdn", "specify cdn provider name")
-	flag.StringVar(&_granularity, "g", "5min", "specify granularity")
-	flag.StringVar(&_grpcServerAddr, "addr", "localhost:80", "specify fscdn grpc server address")
+func parseOptions() {
+	flag.StringVar(&options.domain, "domain", "www.example.com", "specify cdn domain")
+	flag.TextVar(&options.begin, "begin", time.Time{}, "specify begin time (in RFC3339 format)")
+	flag.TextVar(&options.end, "end", time.Time{}, "specify end time (in RFC3339 format)")
+	flag.StringVar(&options.cdn, "cdn", "qiniucdn", "specify cdn provider name")
+	flag.StringVar(&options.granularity, "g", "5min", "specify granularity")
+	flag.StringVar(&options.grpcServer, "addr", "localhost:80", "specify fscdn grpc server address")
 	flag.Parse()
 }
 
 func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []string, cdn string, g types.Granularity) {
-	srv, err := statfscdn.NewCdnStatService(_grpcServerAddr)
+	srv, err := statfscdn.NewCdnStatService(options.grpcServer)
 	if err != nil {
 		util.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []str
 		util.Fatal("Invalid argument: unknown granularity '%s'\n", g)
 	}
 
-	res, err := srv.GetCdnDomainsBandwidth(ctx, types.CDNProvider(cdn), domains, start, end, g, false)
+	res, err := srv.GetCdnDomainsBandwidth(ctx, types.CDNProvider(cdn), domains, start, end, g, false, false)
 	if err != nil {
 		switch {
 		case errors.Is(err, types.ErrInvalidDomain):
@@ -54,14 +54,14 @@ func cdnStatServiceDemo(ctx context.Context, start, end time.Time, domains []str
 		}
 	}
 	for _, it := range res {
-		fmt.Printf("Metric: '%v', domain='%s', region='%v', timeseries=%v\n", it.DataType, it.Domain, it.GeoCover, it.BandWidth)
+		fmt.Printf("Metric: '%v', domain='%s', region='%v', timeseries=%v\n", it.DataType, it.Domain, it.Region, it.Timeseries)
 	}
 }
 
 func main() {
-	parseCmdArgs()
+	parseOptions()
 
 	ctx := logger.NewContext(context.TODO(), logger.New())
 
-	cdnStatServiceDemo(ctx, _begin, _end, []string{_domain}, _cdn, _granularity)
+	cdnStatServiceDemo(ctx, options.begin, options.end, []string{options.domain}, options.cdn, options.granularity)
 }

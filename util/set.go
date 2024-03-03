@@ -24,6 +24,10 @@ func (set *Set[T]) Size() int {
 	return len(set.slots)
 }
 
+func (set *Set[T]) List() []T {
+	return set.slots
+}
+
 func NewSet[T comparable]() *Set[T] {
 	return &Set[T]{}
 }

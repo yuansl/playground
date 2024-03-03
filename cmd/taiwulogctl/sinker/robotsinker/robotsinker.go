@@ -81,7 +81,7 @@ func (sinker *robotsinker) Sink(ctx context.Context, stats []TrafficStat) error 
 		}
 		log.Infof("saving traffic: %+v\n", &traffic)
 
-		if err := sinker.SaveDayTraffic(ctx, &traffic); err != nil {
+		if err := sinker.SaveDayTrafficV2(ctx, &traffic); err != nil {
 			return err
 		}
 	}

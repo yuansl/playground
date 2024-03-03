@@ -128,19 +128,19 @@ func (cli *ftpclient) Quit() error {
 	return cli.conn.Quit()
 }
 
-func Login(addr, user, password string) *ftpclient {
-	serverConn, err := ftp.Dial(options.ftpaddr,
-		ftp.DialWithTimeout(options.connectTimeout),
+func Login(addr, user, password string, dialtimeout time.Duration) *ftpclient {
+	serverConn, err := ftp.Dial(addr,
+		ftp.DialWithTimeout(dialtimeout),
 		ftp.DialWithDisabledEPSV(true),
 		ftp.DialWithDialFunc(func(network, address string) (net.Conn, error) {
-			log.Printf("connecting to %s (timeout=%s) ...\n", address, options.connectTimeout)
-			return net.DialTimeout(network, address, options.connectTimeout)
+			log.Printf("connecting to %s (timeout=%s) ...\n", address, dialtimeout)
+			return net.DialTimeout(network, address, dialtimeout)
 		}))
 	if err != nil {
 		log.Fatal("ftp.Dial:", err)
 	}
 
-	if err = serverConn.Login(options.user, options.password); err != nil {
+	if err = serverConn.Login(user, password); err != nil {
 		log.Fatal("ftp.Login:", err)
 	}
 
