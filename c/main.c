@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <sched.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h> /* for getaddrinfo */
@@ -13,11 +14,11 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <string.h>
 
 #include <jansson.h>
 
 #include "util.h"
-#include "slice.h"
 #include "stringbuffer.h"
 #include "any.h"
 
@@ -476,7 +477,7 @@ int change_a(double *p, int *p2)
 
 	*x = 42;
 
-	return *p2;
+	return a;
 }
 
 int foo(int *ptr1, long *ptr2)
@@ -708,18 +709,6 @@ static struct some *some_init(struct some *some)
 	return some;
 }
 
-void some_destory(void *some)
-{
-	struct some *_some = *(struct some **)some;
-
-	fprintf(stderr, "hello, some\n");
-
-	if (REFCOUNT_DEC(_some->refcount) <= 0) {
-		printf("OK, some will be freed\n");
-		free(_some);
-	}
-}
-
 void cleanup_x(void *x)
 {
 	struct some *some = x;
@@ -758,7 +747,53 @@ enum kind {
 	KIND_UNION	      = 13
 };
 
-int main(void)
+void test_classify_type(void)
+{
+	struct V {
+		char buf1[10];
+		int b;
+		char buf2[10];
+	} var;
+	void *p = &var.buf1[1], *q = &var.b;
+
+	(void)p;
+
+	bool k __unused	      = true;
+	enum kind k2 __unused = KIND_ENUM;
+	int k3 __unused	      = 0;
+	long k4 __unused      = 0L;
+	char k5 __unused      = 'a';
+	typedef void(func)(void);
+	func *k11 __unused;
+	union {
+		int a;
+		double b;
+		long c;
+		char d[256];
+	} k12	    = {};
+	int k13[12] = { [0 ... 9] = 1 };
+	char *k14   = "hello";
+
+	(void)k12;
+	(void)k13;
+
+	printf("address q=%p,&var=%p, %zd, typeof(struct V)=%d\n", q, &var,
+	       (char *)(&var + 1) - (char *)q, __builtin_classify_type(k14));
+}
+
+static void some_destory(void *some)
+{
+	struct some *_some = *(struct some **)some;
+
+	fprintf(stderr, "hello, some\n");
+
+	if (REFCOUNT_DEC(_some->refcount) <= 0) {
+		printf("OK, some will be freed\n");
+		free(_some);
+	}
+}
+
+void test_cleanup(void)
 {
 	struct some *b;
 	{
@@ -798,39 +833,61 @@ int main(void)
 
 	if (isnan(x))
 		printf("now x is Nan\n");
+}
+
+#define pretty_print(format, ...)                               \
+	do {                                                    \
+		time_t now = time(NULL);                        \
+		char line[LINE_MAX];                            \
+		int n	= strftime(line, sizeof(line), "%T %F", \
+				   localtime(&now));            \
+		line[n] = '\0';                                 \
+		n += snprintf(line + n, sizeof(line) - n - 1,   \
+			      ":%s:%d: ", __FILE__, __LINE__);  \
+		snprintf(line + n, sizeof(line) - n - 1,        \
+			 format __VA_OPT__(, ) __VA_ARGS__);    \
+		fprintf(stderr, "%s\n", line);                  \
+	} while (0)
+
+#define print(format, ...)                                       \
+	do {                                                     \
+		pretty_print(format __VA_OPT__(, ) __VA_ARGS__); \
+	} while (0)
+
+int ab = 3;
+
+union tuple {
+	int _1;
+	long _2;
+	double _3;
+};
+
+static int change(int *b, union tuple *c)
+{
+	(void)b;
+	c->_2 = 30;
+
+	return ab;
+}
+
+int main(void)
+{
+	int cpu;
+
+	cpu = sysconf(_SC_NPROCESSORS_ONLN);
+	print("cpu number");
+	pretty_print("The thread is running on cpu #%1$u, %1$u, %1$u\n", cpu);
 
 	{
-		struct V {
-			char buf1[10];
-			int b;
-			char buf2[10];
-		} var;
-		void *p = &var.buf1[1], *q = &var.b;
+		change_a(&ab, &ab);
 
-		(void)p;
+		printf("ab = %d\n", ab);
+	}
 
-		bool k	     = true;
-		enum kind k2 = KIND_ENUM;
-		int k3	     = 0;
-		long k4	     = 0L;
-		char k5	     = 'a';
-		typedef void(func)(void);
-		func *k11;
-		union {
-			int a;
-			double b;
-			long c;
-			char d[256];
-		} k12	    = {};
-		int k13[12] = { [0 ... 9] = 1 };
-		char *k14   = "hello";
-
-		(void)k12;
-		(void)k13;
-
-		printf("address q=%p,&var=%p, %zd, typeof(struct V)=%d\n", q,
-		       &var, (char *)(&var + 1) - (char *)q,
-		       __builtin_classify_type(k14));
+#define TEST_CASE()
+	TEST_CASE()
+	{
+		printf("-1=%0#b\n", -2 << 12);
 	}
 
 	return 0;
