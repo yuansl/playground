@@ -9,10 +9,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdatomic.h>
-#include <stdint.h>
-#include <unistd.h> /* for close */
-#include <stdint.h>
-#include <inttypes.h>
+#include <inttypes.h> /* for macro PRIuMAX */
+#include <unistd.h>   /* for close */
 #include <pthread.h>
 #include <string.h>
 
@@ -888,6 +886,13 @@ int main(void)
 	TEST_CASE()
 	{
 		printf("-1=%0#b\n", -2 << 12);
+	}
+
+	TEST_CASE()
+	{
+		printf("BOOL_WIDTH=%d, CHAR_WIDTH=%d, SHRT_WIDTH=%d, INT_WIDTD=%d, LONG_WIDTH=%d, LLONG_WIDTH=%d\n",
+		       BOOL_WIDTH, CHAR_WIDTH, SHRT_WIDTH, INT_WIDTH,
+		       LONG_WIDTH, LLONG_WIDTH);
 	}
 
 	return 0;
