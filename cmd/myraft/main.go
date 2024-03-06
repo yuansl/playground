@@ -14,9 +14,9 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"net/http"
 	"time"
 
+	"github.com/qbox/net-deftones/logger"
 	netutil "github.com/qbox/net-deftones/util"
 	"github.com/qbox/net-deftones/util/httputil"
 )
@@ -54,6 +54,7 @@ type RaftService interface {
 	HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error)
 	HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error)
 	SendHealthRequest(req *AppendLogRequest) (*AppendLogResponse, error)
+	SendAppendLogRequest(req *AppendLogRequest) (*AppendLogResponse, error)
 }
 
 type LogEntry struct {
@@ -71,6 +72,11 @@ type State struct {
 	voteFor       string
 	commited      []LogEntry
 	uncommited    []LogEntry
+}
+
+// SendAppendLogRequest implements RaftService.
+func (state *State) SendAppendLogRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
+	panic("unimplemented")
 }
 
 // HandleVoteRequest implements APIService.
@@ -112,48 +118,54 @@ func (*State) SendAppendLogPrepare(req *AppendLogRequest) (*AppendLogResponse, e
 	return &AppendLogResponse{Accepted: true}, nil
 }
 
-func leaderLoop(ctx context.Context, me *State) error {
+func (*State) SendAppendLogCommit(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
+}
+
+func raftLeaderLoop(ctx context.Context, me *State) error {
+	heartbeatTick := time.Tick(10 * time.Millisecond)
+	log := logger.FromContext(ctx)
 	for {
-		heartbeatTick := time.Tick(10 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 
 		case <-heartbeatTick:
-			for _, n := range me.Others {
-				me.SendHealthRequest(&AppendLogRequest{
-					Value: LogEntry{Term: me.Term, Value: "PING"},
+			acks := 0
+			for _, node := range me.Others {
+				_, err := me.SendHealthRequest(&AppendLogRequest{
+					PeerAddr: node.Addr,
+					Value:    LogEntry{Term: me.Term, Value: "PING"},
 				})
+				if err != nil {
+					log.Errorf("SendHealthRequest(node=%v) error: %v\n", node, err)
+					continue
+				}
+				acks += 1
+			}
+			if acks < (len(me.Others)+1)/2 {
+
 			}
 
-		case <-me.appendlogChan:
-			for _, n := range me.Others {
-				me.SendAppendLogPrepare(&AppendLogRequest{})
+		case <-me.appendlogChan: // new request from client
+			accepts := 0
+			for _, node := range me.Others {
+				res, err := me.SendAppendLogPrepare(&AppendLogRequest{})
+				if err != nil {
+					log.Errorf("SendAppendLogPrepare(node=%v) error: %v\n", node, err)
+				}
+				if res.Accepted {
+					accepts++
+				}
+			}
+			if accepts >= (len(me.Others)+1)/2 {
+				me.SendAppendLogCommit(&AppendLogRequest{Commited: true})
 			}
 		}
 	}
 }
 
-func RegisterHttpHandlers(ctx context.Context, srv RaftService) http.Handler {
-	handler := httputil.InitHttpHandlerRegister()
-
-	handler.GET("/v1/appendlog", func(c httputil.HttpContext) {
-		var request AppendLogRequest
-		httputil.HandleRequest(c, &request, func(ctx context.Context) (any, error) {
-			return srv.HandleAppendLogEntry(ctx, &request)
-		})
-	})
-	handler.GET("/v1/vote", func(c httputil.HttpContext) {
-		var request VoteRequest
-		httputil.HandleRequest(c, &request, func(ctx context.Context) (any, error) {
-			return srv.HandleVoteRequest(ctx, &request)
-		})
-	})
-
-	return handler.(http.Handler)
-}
-
-func TryElectLeader(ctx context.Context, me *State) error {
+func TryElectRaftLeader(ctx context.Context, me *State) error {
 	votechan := make(chan *VoteRequest)
 
 	for {
@@ -163,7 +175,6 @@ func TryElectLeader(ctx context.Context, me *State) error {
 		case <-electionTimer.C:
 			me.Role = Candidate
 			me.Term += 1
-
 			var votes int
 			node0 := Node{Addr: me.Addr, Name: "A"}
 			for _, node := range me.Others {
@@ -176,15 +187,18 @@ func TryElectLeader(ctx context.Context, me *State) error {
 					votes++
 				}
 			}
-			if votes >= len(me.Others)/2 {
+			if votes >= (len(me.Others)+1)/2 {
 				me.Role = Leader
-				leaderLoop(ctx, me)
+				raftLeaderLoop(ctx, me)
+				me.Role = Follower
 			}
-		case r := <-votechan:
-			if me.Role == Candidate || (me.Term == r.Term && me.voteFor != "") {
-				// Accepted = false
-			} else {
+		case voteReq := <-votechan:
+			if me.Role == Follower && me.voteFor == "" {
+				me.voteFor = voteReq.From.Name
+				me.Term = voteReq.Term
 				// Accepted = true
+			} else {
+				// Accepted = false
 			}
 		}
 	}
@@ -196,7 +210,7 @@ func Run(ctx context.Context, state *State) error {
 	go netutil.WithContext(ctx, func() error {
 		return httputil.StartHttpServer(ctx, state.Addr, handler)
 	})
-	return TryElectLeader(ctx, state)
+	return TryElectRaftLeader(ctx, state)
 }
 
 func main() {
