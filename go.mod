@@ -17,7 +17,7 @@ require (
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/json-iterator/go v1.1.12
 	github.com/marcboeker/go-duckdb v1.5.6
-	github.com/parquet-go/parquet-go v0.0.0-20230713212203-3d3ee2af9ab7
+	github.com/parquet-go/parquet-go v0.20.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/qbox/net-deftones v1.3.4
 	github.com/qiniu/go-sdk/v7 v7.17.0
