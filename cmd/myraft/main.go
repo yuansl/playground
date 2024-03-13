@@ -21,10 +21,10 @@ import (
 	"github.com/qbox/net-deftones/util/httputil"
 )
 
-type Role int
+type State int
 
 const (
-	Follower Role = iota
+	Follower State = iota
 	Candidate
 	Leader
 )
@@ -37,13 +37,13 @@ type VoteRequest struct {
 type VoteResponse struct {
 	Term  int
 	Voted bool
-	Peer  string
+	Peer  *Node
 }
 
 type AppendLogRequest struct {
-	PeerAddr string
 	Commited bool
 	Value    LogEntry
+	Term     int
 }
 
 type AppendLogResponse struct {
@@ -62,37 +62,42 @@ type LogEntry struct {
 	Value any
 }
 
-type State struct {
+type Server struct {
 	Addr          string
 	Leader        string
-	Role          Role
+	state         State
 	Term          int
-	Others        []State
+	Others        []*Node
 	appendlogChan chan *AppendLogRequest
 	voteFor       string
 	commited      []LogEntry
 	uncommited    []LogEntry
 }
 
-// SendAppendLogRequest implements RaftService.
-func (state *State) SendAppendLogRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
-	panic("unimplemented")
-}
-
 // HandleVoteRequest implements APIService.
-func (state *State) HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error) {
+func (*Server) HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error) {
 	panic("unimplemented")
 }
 
-func (state *State) HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error) {
-	if state.Role != Follower || state.Leader != req.PeerAddr {
+func (srv *Server) HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error) {
+	if srv.state != Follower {
 		return nil, fmt.Errorf("Invalid state")
 	}
-	state.appendlogChan <- req
+	srv.appendlogChan <- req
 	return &AppendLogResponse{Accepted: true}, nil
 }
 
-var _ RaftService = (*State)(nil)
+func (*Server) HandleHealthRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
+}
+
+func (*Server) HandleAppendLogPrepare(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
+}
+
+func (*Server) HandleAppendLogCommit(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{Accepted: true}, nil
+}
 
 type Node struct {
 	Addr string
@@ -106,25 +111,26 @@ const (
 	VoteWin
 )
 
-func SendVoteRequest(addr string, req *VoteRequest) (*VoteResponse, error) {
-	return &VoteResponse{Peer: "B", Voted: true}, nil
+func (*Node) SendVoteRequest(addr string, req *VoteRequest) (*VoteResponse, error) {
+	return &VoteResponse{Peer: &Node{Name: "B"}, Voted: true}, nil
 }
 
-func (*State) SendHealthRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
+func (node *Node) SendHealthRequest(term int) (*AppendLogResponse, error) {
+	return node.SendAppendLogPrepare(&AppendLogRequest{Term: term})
+}
+
+func (*Node) SendAppendLogPrepare(req *AppendLogRequest) (*AppendLogResponse, error) {
 	return &AppendLogResponse{Accepted: true}, nil
 }
 
-func (*State) SendAppendLogPrepare(req *AppendLogRequest) (*AppendLogResponse, error) {
-	return &AppendLogResponse{Accepted: true}, nil
+func (*Node) SendAppendLogCommit(req *AppendLogRequest) (*AppendLogResponse, error) {
+	return &AppendLogResponse{}, nil
 }
 
-func (*State) SendAppendLogCommit(req *AppendLogRequest) (*AppendLogResponse, error) {
-	return &AppendLogResponse{Accepted: true}, nil
-}
-
-func raftLeaderLoop(ctx context.Context, me *State) error {
+func raftLeaderLoop(ctx context.Context, me *Server) error {
 	heartbeatTick := time.Tick(10 * time.Millisecond)
 	log := logger.FromContext(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -133,24 +139,21 @@ func raftLeaderLoop(ctx context.Context, me *State) error {
 		case <-heartbeatTick:
 			acks := 0
 			for _, node := range me.Others {
-				_, err := me.SendHealthRequest(&AppendLogRequest{
-					PeerAddr: node.Addr,
-					Value:    LogEntry{Term: me.Term, Value: "PING"},
-				})
+				_, err := node.SendHealthRequest(me.Term)
 				if err != nil {
 					log.Errorf("SendHealthRequest(node=%v) error: %v\n", node, err)
 					continue
 				}
 				acks += 1
 			}
-			if acks < (len(me.Others)+1)/2 {
-
+			if acks == 0 {
+				return fmt.Errorf("None of others response my healthcheck request")
 			}
 
 		case <-me.appendlogChan: // new request from client
 			accepts := 0
 			for _, node := range me.Others {
-				res, err := me.SendAppendLogPrepare(&AppendLogRequest{})
+				res, err := node.SendAppendLogPrepare(&AppendLogRequest{})
 				if err != nil {
 					log.Errorf("SendAppendLogPrepare(node=%v) error: %v\n", node, err)
 				}
@@ -159,26 +162,30 @@ func raftLeaderLoop(ctx context.Context, me *State) error {
 				}
 			}
 			if accepts >= (len(me.Others)+1)/2 {
-				me.SendAppendLogCommit(&AppendLogRequest{Commited: true})
+				for _, node := range me.Others {
+					node.SendAppendLogCommit(&AppendLogRequest{Commited: true})
+				}
 			}
 		}
 	}
 }
 
-func TryElectRaftLeader(ctx context.Context, me *State) error {
+func TryElectRaftLeader(ctx context.Context, me *Server) error {
 	votechan := make(chan *VoteRequest)
+	electionTimeout := func() time.Duration { return time.Duration(rand.Int()%151+150) * time.Millisecond }
+	electionTimer := time.NewTimer(electionTimeout())
 
 	for {
-		electionTimer := time.NewTimer(time.Duration(rand.Int()%151+150) * time.Millisecond)
-
 		select {
 		case <-electionTimer.C:
-			me.Role = Candidate
+			electionTimer.Reset(electionTimeout())
+			me.state = Candidate
 			me.Term += 1
+
 			var votes int
 			node0 := Node{Addr: me.Addr, Name: "A"}
 			for _, node := range me.Others {
-				res, err := SendVoteRequest(node.Addr, &VoteRequest{From: &node0, Term: me.Term})
+				res, err := node.SendVoteRequest(node.Addr, &VoteRequest{From: &node0, Term: me.Term})
 				if err != nil {
 					fmt.Printf("SendVoteRequest(node=%+v) error: %v\n", node, err)
 					continue
@@ -188,12 +195,12 @@ func TryElectRaftLeader(ctx context.Context, me *State) error {
 				}
 			}
 			if votes >= (len(me.Others)+1)/2 {
-				me.Role = Leader
+				me.state = Leader
 				raftLeaderLoop(ctx, me)
-				me.Role = Follower
+				me.state = Follower
 			}
 		case voteReq := <-votechan:
-			if me.Role == Follower && me.voteFor == "" {
+			if me.state == Follower && me.voteFor == "" {
 				me.voteFor = voteReq.From.Name
 				me.Term = voteReq.Term
 				// Accepted = true
@@ -204,7 +211,7 @@ func TryElectRaftLeader(ctx context.Context, me *State) error {
 	}
 }
 
-func Run(ctx context.Context, state *State) error {
+func Run(ctx context.Context, state *Server) error {
 	handler := RegisterHttpHandlers(ctx, state)
 
 	go netutil.WithContext(ctx, func() error {
@@ -214,8 +221,17 @@ func Run(ctx context.Context, state *State) error {
 }
 
 func main() {
-	me := State{Addr: "A", Others: []State{{Addr: "B"}, {Addr: "C"}}, Term: 0}
-	ctx := netutil.InitSignalHandler(context.TODO())
+	// server := Server{Addr: "A", Others: []Server{{Addr: "B"}, {Addr: "C"}}, Term: 0}
 
-	Run(ctx, &me)
+	// ctx := netutil.InitSignalHandler(context.TODO())
+	// err := Run(ctx, &server)
+	// if err != nil {
+	// 	switch {
+	// 	case errors.Is(err, context.Canceled):
+	// 		err = context.Cause(ctx)
+	// 		fallthrough
+	// 	default:
+	// 		util.Fatal(err)
+	// 	}
+	// }
 }
