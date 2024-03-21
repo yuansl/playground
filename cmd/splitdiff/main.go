@@ -20,8 +20,7 @@ import (
 	"time"
 	"unsafe"
 
-	netutil "github.com/qbox/net-deftones/util"
-	util "github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 func alignoftime(t time.Time) time.Time {
@@ -30,7 +29,7 @@ func alignoftime(t time.Time) time.Time {
 
 func main() {
 	fp, err := os.Open("diff.log")
-	netutil.Assert(fp != nil, "os.Open:", err)
+	util.Assert(fp != nil, "os.Open:", err)
 	defer fp.Close()
 
 	type DomainHour struct {
@@ -44,7 +43,7 @@ func main() {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				netutil.Fatal("bufio.Reader.ByteBytes:", err)
+				util.Fatal("bufio.Reader.ByteBytes:", err)
 			}
 			break
 		}

@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/qbox/net-deftones/util"
+
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/oss/kodo"
-	"github.com/yuansl/playground/util"
 )
 
 const (

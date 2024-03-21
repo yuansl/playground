@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/qbox/net-deftones/stream"
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 var options struct {

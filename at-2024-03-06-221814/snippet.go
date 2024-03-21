@@ -33,8 +33,7 @@ type Codec[T any] interface {
 }
 
 type cdnlogCodec[T any] struct {
-	bufferPool   sync.Pool
-	parquetwPool sync.Pool
+	bufferPool sync.Pool
 }
 
 // Decode implements Codec.
@@ -59,8 +58,7 @@ func (c *cdnlogCodec[T]) Encode(v T) ([]byte, error) {
 
 func newcdnlogCodec[T any]() *cdnlogCodec[T] {
 	return &cdnlogCodec[T]{
-		bufferPool:   sync.Pool{New: func() any { return bytes.NewBuffer(nil) }},
-		parquetwPool: sync.Pool{New: func() any { return parquet.NewGenericWriter[T](buf) }},
+		bufferPool: sync.Pool{New: func() any { return bytes.NewBuffer(nil) }},
 	}
 }
 

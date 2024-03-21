@@ -21,7 +21,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 const MAX_DBFILE_SIZE = 1 << 30
