@@ -1,12 +1,12 @@
 [
   {
     "arguments": [
-      "/usr/bin/gcc-13",
+      "/usr/local/bin/gcc-13",
       "-std=gnu2x",
       "-O2",
-      "-g",
       "-Werror",
       "-Wall",
+      "-Wextra",
       "-I/usr/include/dbus-1.0",
       "-I/usr/lib/x86_64-linux-gnu/dbus-1.0/include",
       "-c",
@@ -14,8 +14,8 @@
       "main.o",
       "main.c"
     ],
-    "directory": "/home/yuansl/src/playground/cmd/focuswindows",
-    "file": "/home/yuansl/src/playground/cmd/focuswindows/main.c",
-    "output": "/home/yuansl/src/playground/cmd/focuswindows/main.o"
+    "directory": "/home/yuansl/src/playground/cmd/raise-emacs",
+    "file": "/home/yuansl/src/playground/cmd/raise-emacs/main.c",
+    "output": "/home/yuansl/src/playground/cmd/raise-emacs/main.o"
   }
 ]
