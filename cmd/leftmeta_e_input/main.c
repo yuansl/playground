@@ -1,13 +1,14 @@
 /* copied from https://www.kernel.org/doc/html/v6.5/input/uinput.html */
 #include <linux/uinput.h>
-#include <unistd.h>
-#include <fcntl.h>
 
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <unistd.h>
+#include <fcntl.h>
 
 [[noreturn]] static inline void _fatal(const char *fmt, ...)
 {
@@ -23,7 +24,7 @@
 #define fatal(...)                                                           \
 	({                                                                   \
 		fprintf(stderr, "%s:%d: fatal error: ", __func__, __LINE__); \
-		_fatal(__VA_ARGS__);                                        \
+		_fatal(__VA_ARGS__);                                         \
 	})
 
 static void emit_input_event(int fd, int type, int code, int val)
@@ -33,11 +34,11 @@ static void emit_input_event(int fd, int type, int code, int val)
 {
 	struct input_event ie = {};
 
-	ie.type = type;
-	ie.code = code;
+	ie.type	 = type;
+	ie.code	 = code;
 	ie.value = val;
 	/* timestamp values below are ignored */
-	ie.time.tv_sec = 0;
+	ie.time.tv_sec	= 0;
 	ie.time.tv_usec = 0;
 
 	if (write(fd, &ie, sizeof(ie)) != sizeof(ie))
@@ -63,9 +64,9 @@ static inline int create_uinput_dev_keyboard(void)
 	ioctl(fd, UI_SET_KEYBIT, KEY_LEFTMETA);
 	ioctl(fd, UI_SET_KEYBIT, KEY_E);
 	usetup = (struct uinput_setup){
-		.id = (struct input_id){ .bustype = BUS_USB,
-					 .vendor = 0x1,
-					 .product = 0x1 },
+		.id   = (struct input_id){ .bustype = BUS_USB,
+					   .vendor  = 0x1,
+					   .product = 0x1 },
 		.name = "uinput keyboard"
 	};
 	ioctl(fd, UI_DEV_SETUP, &usetup);
@@ -104,7 +105,6 @@ static inline void press_leftmeta_e_key_and_release(int fd)
 	emit_input_event(fd, EV_SYN, SYN_REPORT, 0);
 }
 
-
 int pidfd;
 
 const char *pid_file_name = "/run/raise-emacs.pid";
@@ -122,13 +122,13 @@ static void save_pid_to_file(void)
 	if (pidfd < 0)
 		fatal("open('%s'): %m\n", pid_file_name);
 
-        sprintf(buf, "%d", getpid());
+	sprintf(buf, "%d", getpid());
 
 	if (write(pidfd, buf, strlen(buf)) != (ssize_t)strlen(buf))
 		fatal("write(pidfd): %m\n");
 }
 
-int fd;
+int volatile fd;
 
 static void sigusr1_handler(int)
 {

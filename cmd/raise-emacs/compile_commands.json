@@ -1,0 +1,21 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc-13",
+      "-std=gnu2x",
+      "-O2",
+      "-g",
+      "-Werror",
+      "-Wall",
+      "-I/usr/include/dbus-1.0",
+      "-I/usr/lib/x86_64-linux-gnu/dbus-1.0/include",
+      "-c",
+      "-o",
+      "main.o",
+      "main.c"
+    ],
+    "directory": "/home/yuansl/src/playground/cmd/focuswindows",
+    "file": "/home/yuansl/src/playground/cmd/focuswindows/main.c",
+    "output": "/home/yuansl/src/playground/cmd/focuswindows/main.o"
+  }
+]
