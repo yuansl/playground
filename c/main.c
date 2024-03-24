@@ -880,28 +880,28 @@ struct file {
 	char *name;
 };
 
-#define MAX_RETRY_CNT 10
+#define MAX_RETRY_CNT 1
 
-#define WITH_RETRY(max_retry, fn, ...)                                   \
-	({                                                               \
-		int cnt	    = 0;                                         \
-		ssize_t err = 0;                                         \
-		do {                                                     \
-			err = fn(__VA_ARGS__);                           \
-			if (err < 0) {                                   \
-				if (errno == EINTR || errno == EAGAIN) { \
-					if (++cnt <= max_retry) {        \
-						continue;                \
-					}                                \
-				}                                        \
-				printf("fn() failed: %m\n");             \
-			}                                                \
-		} while (0);                                             \
-		err;                                                     \
+#define WITH_RETRY(max_retry, fn, ...)                              \
+	({                                                          \
+		int cnt	    = 0;                                    \
+		ssize_t err = 0;                                    \
+		do {                                                \
+			err = fn(__VA_ARGS__);                      \
+			if (err >= 0)                               \
+				break;                              \
+			if (!(errno == EINTR || errno == EAGAIN)) { \
+				break;                              \
+			}                                           \
+			printf("fn() failed: %m\n");                \
+		} while (++cnt <= max_retry);                       \
+		err;                                                \
 	})
 
-static ssize_t __attribute__((nonnull(1, 2))) io_read2(struct file *file,
-						       void *buf, size_t size)
+static ssize_t io_read2(struct file *file, void *buf, size_t size)
+	__attribute__((nonnull(1, 2)));
+
+static ssize_t io_read2(struct file *file, void *buf, size_t size)
 {
 	char *p = buf;
 
@@ -966,7 +966,7 @@ static inline __attribute__((constructor)) void init(void)
 		BUFSIZE = size;
 }
 
-int main(int, char *argv[])
+static void __unused test_read2(int, char *argv[])
 {
 	char buf[BUFSIZE];
 	int fd;
@@ -984,6 +984,52 @@ int main(int, char *argv[])
 		},
 		buf, sizeof(buf));
 	printf("read %zd bytes from '%s'\n", n, argv[1]);
+}
 
+int intger_cmp(const void *a, const void *b)
+{
+	const int *i1 = a;
+	const int *i2 = b;
+	return *i1 - *i2;
+}
+
+int string_cmp(const void *a, const void *b)
+{
+	typedef char *T;
+	const T *s1 = a, *s2 = b;
+	return strcmp(*s2, *s1);
+}
+
+int some_magic_counter = 0;
+
+int do_something(void)
+{
+	printf("calling do_something ...\n");
+	if (some_magic_counter++ >= 4)
+		return 0;
+	errno = EAGAIN;
+	return -1;
+}
+
+static void __unused test_qsort(void)
+{
+	const char *strings[] = { "c", "b", "a" };
+
+	qsort(strings, ARRAY_SIZE(strings), sizeof(strings[0]), string_cmp);
+
+	for (int i = 0; i < ARRAY_SIZE(strings); i++) {
+		printf("strings[%1$d]: %2$s\n", i, strings[i]);
+	}
+}
+
+static void __unused test_WITH_RETRY(void)
+{
+	int err = WITH_RETRY(1, do_something);
+
+	printf("result = %d\n", err);
+}
+
+int main(void)
+{
 	return 0;
 }

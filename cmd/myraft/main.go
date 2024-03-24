@@ -11,13 +11,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/qbox/net-deftones/logger"
@@ -35,96 +35,24 @@ const (
 
 var ErrInvalidState = errors.New("myraft: Invalid state")
 
-type Request struct {
-	Path        string
-	Method      string
-	Body        []byte
-	ContentType string
-}
-
-type Response = httputil.Response
-
-type Client interface {
-	Send(ctx context.Context, _ *Request) (*Response, error)
-}
-
-type Node struct {
-	Client
-	Addr string
-	Name string
-}
-
-func (node *Node) SendVoteRequest(addr string, req *VoteRequest) (*VoteResponse, error) {
-	data, _ := json.Marshal(req)
-	resp, err := node.Send(context.Background(), &Request{Path: "/v1/vote", Method: http.MethodPost, Body: data, ContentType: "application/json"})
-	if err != nil {
-		return nil, err
-	}
-	_ = resp
-	return &VoteResponse{Peer: &Node{Name: "B"}, Voted: true}, nil
-}
-
-func (node *Node) SendHealthcheckRequest(term int) (*AppendLogResponse, error) {
-	return node.SendAppendLogRequest(&AppendLogRequest{Term: term, Commited: true})
-}
-
-func (node *Node) SendAppendLogRequest(req *AppendLogRequest) (*AppendLogResponse, error) {
-	data, _ := json.Marshal(req)
-	resp, err := node.Send(context.Background(), &Request{Path: "/v1/appendlog", Method: http.MethodPost, Body: data, ContentType: "application/json"})
-	if err != nil {
-		return nil, err
-	}
-	return &AppendLogResponse{Accepted: resp.Result.(map[string]any)["Accepted"].(bool)}, nil
-}
-
-type client struct {
-	*http.Client
-	endpoint string
-}
-
-// Do implements Client.
-func (c *client) Send(ctx context.Context, req *Request) (*Response, error) {
-	var body bytes.Buffer
-	if len(req.Body) > 0 {
-		body.Write(req.Body)
-	}
-	URL := c.endpoint + req.Path
-	hreq, err := http.NewRequestWithContext(ctx, req.Method, URL, &body)
-	if err != nil {
-		return nil, err
-	}
-	hres, err := c.Client.Do(hreq)
-	if err != nil {
-		return nil, err
-	}
-	var res Response
-	if err = json.NewDecoder(hres.Body).Decode(&res); err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-var _ Client = (*client)(nil)
-
 type VoteRequest struct {
 	Term int
 	From string
 }
 
 type VoteResponse struct {
-	Term  int
-	Voted bool
-	Peer  *Node
+	Accept bool `json:"accept"`
 }
 
 type AppendLogRequest struct {
 	Term     int
 	Commited bool
 	Value    *LogEntry
+	Name     string
 }
 
 type AppendLogResponse struct {
-	Accepted bool
+	Accept bool `json:"accept"`
 }
 
 type RaftService interface {
@@ -141,13 +69,14 @@ type LogEntry struct {
 type Server struct {
 	Addr          string
 	Leader        string
+	mu            sync.RWMutex
 	state         State
 	Term          int
 	Others        []*Node
+	voteFor       string
 	election      *time.Timer
 	healthcheck   *time.Ticker
 	appendlogChan chan *AppendLogRequest
-	voteFor       string
 	commited      []LogEntry
 	uncommited    []LogEntry
 }
@@ -156,46 +85,54 @@ type Server struct {
 func (srv *Server) HandleVoteRequest(ctx context.Context, req *VoteRequest) (*VoteResponse, error) {
 	var resp VoteResponse
 
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	if srv.state == FOLLOWER_STATE && req.Term >= srv.Term && srv.Leader == "" {
-		if srv.voteFor == "" {
-			resp.Term = req.Term
-			resp.Voted = true
-			srv.Term = req.Term
-			srv.voteFor = req.From
-		} else if srv.voteFor == req.From {
-			srv.voteFor = ""
-			srv.Leader = req.From
-		}
 		srv.election.Reset(electionTimeout())
+		resp.Accept = true
+		if srv.voteFor == "" {
+			srv.voteFor = req.From
+			srv.Term = req.Term
+		} else if srv.voteFor == req.From && req.Term == srv.Term {
+			srv.Leader = req.From
+			srv.voteFor = ""
+		} else {
+			resp.Accept = false
+		}
 	}
 	return &resp, nil
 }
 
 func (srv *Server) HandleAppendLogEntry(ctx context.Context, req *AppendLogRequest) (*AppendLogResponse, error) {
-	if srv.state != FOLLOWER_STATE {
-		return nil, ErrInvalidState
-	}
-	accepts := 0
-	for _, node := range srv.Others {
-		res, err := node.SendAppendLogRequest(&AppendLogRequest{Commited: false})
-		if err != nil {
-			logger.FromContext(ctx).Errorf("SendAppendLogPrepare(node=%v) error: %v\n", node, err)
-		}
-		if res.Accepted {
-			accepts++
-		}
-	}
-	if accepts >= (len(srv.Others)+1)/2 {
-		for _, node := range srv.Others {
-			node.SendAppendLogRequest(&AppendLogRequest{Commited: true})
-		}
-	}
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 
-	return &AppendLogResponse{Accepted: true}, nil
+	accept := false
+	if srv.state == FOLLOWER_STATE && req.Term == srv.Term && srv.Leader == req.Name {
+		accept = true
+	}
+	srv.election.Reset(electionTimeout())
+	// accepts := 0
+	// for _, node := range srv.Others {
+	// 	res, err := node.SendAppendLogRequest(ctx, &AppendLogRequest{Commited: false})
+	// 	if err != nil {
+	// 		logger.FromContext(ctx).Errorf("SendAppendLogRequest(node=%v) error: %v\n", node, err)
+	// 	}
+	// 	if res.Accepted {
+	// 		accepts++
+	// 	}
+	// }
+	// if accepts >= (len(srv.Others)+1)/2 {
+	// 	for _, node := range srv.Others {
+	// 		node.SendAppendLogRequest(ctx, &AppendLogRequest{Commited: true})
+	// 	}
+	// }
+
+	return &AppendLogResponse{Accept: accept}, nil
 }
 
 func raftLeaderLoop(ctx context.Context, me *Server) error {
-	heartbeatTick := time.Tick(10 * time.Millisecond)
+	heartbeatTick := time.Tick(1 * time.Second)
 
 	for {
 		select {
@@ -203,10 +140,10 @@ func raftLeaderLoop(ctx context.Context, me *Server) error {
 			return ctx.Err()
 
 		case <-heartbeatTick:
-			logger.FromContext(ctx).Infof("tick tock\n")
+			logger.FromContext(ctx).Infof("Now, I(%s) am leader tick tock\n", me.Addr)
 			acks := 0
 			for _, node := range me.Others {
-				_, err := node.SendHealthcheckRequest(me.Term)
+				_, err := node.SendHealthcheckRequest(ctx, me.Addr, me.Term)
 				if err != nil {
 					logger.FromContext(ctx).Errorf("SendHealthRequest(node=%v) error: %v\n", node, err)
 					continue
@@ -214,7 +151,7 @@ func raftLeaderLoop(ctx context.Context, me *Server) error {
 				acks++
 			}
 			if acks == 0 {
-				return fmt.Errorf("None of others response my healthcheck request")
+				util.BUG(fmt.Sprintf("None of other nodes response my healthcheck request"))
 			}
 		}
 	}
@@ -226,31 +163,40 @@ func TryRaftLeaderElection(ctx context.Context, me *Server) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-me.election.C:
+			log := logger.FromContext(ctx)
+			log.Infof("[candidate timeout: %s]: try to election in my term: %d...\n",
+				me.Addr, me.Term)
+
+			me.mu.Lock()
 			me.state = CANDIDATE_STATE
 			me.Term += 1
 			me.voteFor = "me"
-
-			logger.FromContext(ctx).Infof("Try to election in my term: %d...\n", me.Term)
+			me.mu.Unlock()
 
 			var votes int
 			for _, node := range me.Others {
-				res, err := node.SendVoteRequest(node.Addr, &VoteRequest{From: me.Addr, Term: me.Term})
+				res, err := node.SendVoteRequest(ctx, &VoteRequest{From: me.Addr, Term: me.Term})
 				if err != nil {
-					fmt.Printf("SendVoteRequest(node=%+v) error: %v\n", node, err)
+					log.Errorf("SendVoteRequest(node=%+v) error: %v\n", node, err)
 					continue
 				}
-				if res.Voted {
+				if res.Accept {
 					votes++
 				}
 			}
 			if votes >= (len(me.Others)+1)/2 {
+				me.mu.Lock()
 				me.state = LEADER_STATE
+				me.mu.Unlock()
 				me.election.Stop()
 				if err := raftLeaderLoop(ctx, me); err != nil {
 					return err
 				}
+				me.mu.Lock()
 				me.state = FOLLOWER_STATE
+				me.mu.Unlock()
 			}
+			log.Infof("Received %d votes, election failed, try again\n", votes)
 			me.election.Reset(electionTimeout())
 		}
 	}
@@ -274,13 +220,34 @@ func parseOptions() {
 	flag.StringVar(&options.addr, "addr", "127.0.0.1:3678", "specify the address of the node")
 	flag.StringVar(&options.members, "members", "", "specify the members of the cluster")
 	flag.Parse()
+	if options.addr == "" {
+		util.Fatal("addr of the server must not be empty")
+	}
+	if options.members == "" {
+		util.Fatal("members must not be empty")
+	}
+}
+
+func initClusterMembers() []*Node {
+	var nodes []*Node
+
+	for _, memb := range strings.Split(options.members, ",") {
+		nodes = append(nodes, &Node{
+			Addr: memb,
+			Client: &httpClient{
+				endpoint: memb, Client: http.DefaultClient,
+			}})
+	}
+	return nodes
 }
 
 func main() {
 	parseOptions()
-	var nodes []*Node
+	nodes := initClusterMembers()
 	server := Server{Addr: options.addr, Others: nodes, Term: 0, election: time.NewTimer(electionTimeout())}
 	ctx := util.InitSignalHandler(context.TODO())
+
+	ctx = logger.NewContext(ctx, logger.New())
 
 	if err := Run(ctx, &server); err != nil {
 		switch {

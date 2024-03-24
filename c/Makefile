@@ -1,7 +1,8 @@
 SHELL=/bin/bash
 CC = gcc-13 -std=gnu2x
-CFLAGS = -g -O2 -Wall -Wextra -fno-strict-aliasing
-LDFLAGS = $(shell pkg-config --libs jansson)
+CFLAGS = -O2 -Wall -Wextra -Werror -fno-strict-aliasing -pthread
+LDFLAGS = -pthread
+LIBS = $(shell pkg-config --libs jansson)
 OBJS = main.o
 OBJS += slice.o
 OBJS += stringbuffer.o
@@ -9,7 +10,9 @@ OBJS += any.o
 OBJS += pthreads.o
 OBJS += option.o
 
-a.out: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
+EXECUTABLE = a.out
+
+$(EXECUTABLE): $(OBJS)
+	$(CC) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
 clean:
-	$(RM) a.out $(OBJS)
+	$(RM) $(EXECUTABLE) $(OBJS)
