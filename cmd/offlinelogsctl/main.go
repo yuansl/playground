@@ -11,7 +11,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 type StandardizedLog struct {

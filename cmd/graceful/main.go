@@ -15,7 +15,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 var HOSTNAME string

@@ -7,8 +7,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/marcboeker/go-duckdb"
-
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 func Open(parquetfile string) *sqlx.DB {

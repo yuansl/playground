@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/qbox/net-deftones/logger"
+	"github.com/qbox/net-deftones/util"
+
 	"github.com/yuansl/playground/trace"
-	"github.com/yuansl/playground/util"
 )
 
 const _REQUEST_TIMEOUT_DEFAULT = 30 * time.Millisecond

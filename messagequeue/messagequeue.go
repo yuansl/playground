@@ -9,7 +9,6 @@ type Header struct {
 	Timestamp time.Time
 	UUID      string
 	Topic     string
-	Queue     string
 }
 
 type Message struct {

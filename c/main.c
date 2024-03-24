@@ -13,12 +13,16 @@
 #include <unistd.h>   /* for close */
 #include <pthread.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #include <jansson.h>
 
 #include "util.h"
 #include "stringbuffer.h"
 #include "any.h"
+
+static size_t BUFSIZE = 1 << 10;
 
 #define STRING_BUFSIZE 10
 
@@ -469,7 +473,7 @@ int f2(void)
 
 int a = 3;
 
-int change_a(double *p, int *p2)
+int change_a(double *p, int *p2 __unused)
 {
 	int *x = (int *)p;
 
@@ -860,7 +864,7 @@ union tuple {
 	double _3;
 };
 
-static int change(int *b, union tuple *c)
+static int __unused change(int *b, union tuple *c)
 {
 	(void)b;
 	c->_2 = 30;
@@ -868,32 +872,118 @@ static int change(int *b, union tuple *c)
 	return ab;
 }
 
-int main(void)
+struct file {
+	union {
+		int fd;
+		FILE *fp;
+	};
+	char *name;
+};
+
+#define MAX_RETRY_CNT 10
+
+#define WITH_RETRY(max_retry, fn, ...)                                   \
+	({                                                               \
+		int cnt	    = 0;                                         \
+		ssize_t err = 0;                                         \
+		do {                                                     \
+			err = fn(__VA_ARGS__);                           \
+			if (err < 0) {                                   \
+				if (errno == EINTR || errno == EAGAIN) { \
+					if (++cnt <= max_retry) {        \
+						continue;                \
+					}                                \
+				}                                        \
+				printf("fn() failed: %m\n");             \
+			}                                                \
+		} while (0);                                             \
+		err;                                                     \
+	})
+
+static ssize_t __attribute__((nonnull(1, 2))) io_read2(struct file *file,
+						       void *buf, size_t size)
 {
-	int cpu;
+	char *p = buf;
 
-	cpu = sysconf(_SC_NPROCESSORS_ONLN);
-	print("cpu number");
-	pretty_print("The thread is running on cpu #%1$u, %1$u, %1$u\n", cpu);
+	while (size > 0) {
+		ssize_t n = WITH_RETRY(MAX_RETRY_CNT, read, file->fd, p,
+				       (size > BUFSIZE ? BUFSIZE : size));
+		if (n <= 0) {
+			break;
+		}
+		p += n;
+		size -= n;
+	}
+	return p - (char *)buf;
+}
 
-	{
-		change_a(&ab, &ab);
+static ssize_t __unused io_read(struct file *file, void *buf, size_t len)
+{
+	int n;
+	int fd;
+	char *p	    = (char *)buf;
+	size_t left = len;
+	size_t step = 1024 * 1024;
+	int cnt	    = 0;
+	if (file == NULL || buf == NULL || len == 0) {
+		printf("%s paraments invalid!\n", __func__);
+		return -1;
+	}
+	fd = file->fd;
+	while (left > 0) {
+		if (left < step)
+			step = left;
+		n = read(fd, (void *)p, step);
+		if (n > 0) {
+			p += n;
+			left -= n;
+			continue;
+		} else if (n == 0) {
+			break;
+		}
+		if (errno == EINTR || errno == EAGAIN) {
+			if (++cnt > MAX_RETRY_CNT) {
+				printf("reach max retry count\n");
+				break;
+			}
+			continue;
+		} else {
+			printf("read failed: %d\n", errno);
+			break;
+		}
+	}
+	return (len - left);
+}
 
-		printf("ab = %d\n", ab);
+static inline __attribute__((constructor)) void init(void)
+{
+	int size  = 0;
+	char *env = getenv("BUFSIZE");
+
+	if (env)
+		size = atoi(env);
+	if (size > 0)
+		BUFSIZE = size;
+}
+
+int main(int, char *argv[])
+{
+	char buf[BUFSIZE];
+	int fd;
+	ssize_t n;
+
+	fd = open(argv[1], O_RDONLY);
+	if (fd < 0) {
+		fatal("open: %m\n");
 	}
 
-#define TEST_CASE()
-	TEST_CASE()
-	{
-		printf("-1=%0#b\n", -2 << 12);
-	}
-
-	TEST_CASE()
-	{
-		printf("BOOL_WIDTH=%d, CHAR_WIDTH=%d, SHRT_WIDTH=%d, INT_WIDTD=%d, LONG_WIDTH=%d, LLONG_WIDTH=%d\n",
-		       BOOL_WIDTH, CHAR_WIDTH, SHRT_WIDTH, INT_WIDTH,
-		       LONG_WIDTH, LLONG_WIDTH);
-	}
+	n = io_read2(
+		&(struct file){
+			.fd   = fd,
+			.name = argv[1],
+		},
+		buf, sizeof(buf));
+	printf("read %zd bytes from '%s'\n", n, argv[1]);
 
 	return 0;
 }

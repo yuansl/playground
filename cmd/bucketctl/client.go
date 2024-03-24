@@ -10,7 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/yuansl/playground/util"
+	"github.com/qbox/net-deftones/util"
 )
 
 type Client struct {

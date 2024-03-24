@@ -17,10 +17,10 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/qbox/net-deftones/logger"
+	"github.com/qbox/net-deftones/util"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yuansl/playground/cmd/taiwulogctl/sinker"
-	"github.com/yuansl/playground/util"
 )
 
 const BUFSIZE = 1 << 20

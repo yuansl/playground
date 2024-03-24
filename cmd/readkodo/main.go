@@ -11,12 +11,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/qbox/net-deftones/util"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/yuansl/playground/oss"
 	"github.com/yuansl/playground/oss/kodo"
 	playtrace "github.com/yuansl/playground/trace"
-	"github.com/yuansl/playground/util"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (

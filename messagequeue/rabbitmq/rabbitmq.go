@@ -8,23 +8,30 @@ import (
 	"runtime"
 
 	"github.com/qbox/net-deftones/logger"
-	netutil "github.com/qbox/net-deftones/util"
+	"github.com/qbox/net-deftones/util"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/yuansl/playground/messagequeue"
-	"github.com/yuansl/playground/util"
 )
 
-type Message = messagequeue.Message
+type Message struct {
+	*messagequeue.Message
+	Queue string
+}
 
 type producer struct {
 	*amqp.Channel
 	exchange string
+	queue    string
 }
 
-func (mqp *producer) Sendmsg(ctx context.Context, msg *Message) error {
+func (mqp *producer) Sendmsg(ctx context.Context, msg *messagequeue.Message) error {
+	return mqp.Sendmsg1(ctx, &Message{msg, mqp.queue})
+}
+
+func (mqp *producer) Sendmsg1(ctx context.Context, msg *Message) error {
 	logger.FromContext(ctx).Infof("Sending message to {exchange=%s, queue=%q, routingkey=%q}: '%s' ...\n",
-		mqp.exchange, msg.Header.Queue, msg.Header.Topic, msg)
+		mqp.exchange, msg.Queue, msg.Header.Topic, msg)
 
 	return mqp.PublishWithContext(ctx, mqp.exchange, msg.Header.Topic, false, false, amqp.Publishing{
 		Body:        msg.Body,
@@ -45,7 +52,7 @@ func NewProducer(opts ...RabbitMQOption) (*producer, error) {
 		return nil, fmt.Errorf("channel.ExchangeDeclare: %w", err)
 	}
 
-	return &producer{Channel: ch, exchange: options.exchange}, nil
+	return &producer{Channel: ch, exchange: options.exchange, queue: options.queue}, nil
 }
 
 type consumer struct {
@@ -55,7 +62,7 @@ type consumer struct {
 	options *rabbitmqOptions
 }
 
-func (mqc *consumer) Recvmsg(ctx context.Context) (*Message, error) {
+func (mqc *consumer) Recvmsg1(ctx context.Context) (*Message, error) {
 	msg, ok := <-mqc.mq
 	if !ok {
 		return nil, fmt.Errorf("mq closed")
@@ -63,7 +70,15 @@ func (mqc *consumer) Recvmsg(ctx context.Context) (*Message, error) {
 	return msg, nil
 }
 
-func (mqc *consumer) consume(ctx context.Context) error {
+func (mqc *consumer) Recvmsg(ctx context.Context) (*messagequeue.Message, error) {
+	msg, err := mqc.Recvmsg1(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return msg.Message, nil
+}
+
+func (mqc *consumer) consume(_ context.Context) error {
 	c, err := mqc.Consume(mqc.queue, mqc.options.consumer, false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("mq.ch.Consume: %v", err)
@@ -72,7 +87,7 @@ func (mqc *consumer) consume(ctx context.Context) error {
 		if err = msg.Ack(true); err != nil {
 			return fmt.Errorf("rabbitmq.Ack: %w", err)
 		}
-		mqc.mq <- &Message{Body: msg.Body, Header: messagequeue.Header{UUID: msg.MessageId, Timestamp: msg.Timestamp}}
+		mqc.mq <- &Message{Message: &messagequeue.Message{Body: msg.Body, Header: messagequeue.Header{UUID: msg.MessageId, Timestamp: msg.Timestamp}}}
 	}
 	return nil
 }
@@ -95,7 +110,7 @@ func NewConsumer(opts ...RabbitMQOption) (*consumer, error) {
 	c := &consumer{
 		Channel: ch,
 		queue:   options.queue,
-		mq:      make(chan *messagequeue.Message, runtime.NumCPU()),
+		mq:      make(chan *Message, runtime.NumCPU()),
 		options: options,
 	}
 
@@ -127,7 +142,7 @@ func (mq *rabbitmqueue) Close() error {
 	return err
 }
 
-type RabbitMQOption netutil.Option
+type RabbitMQOption util.Option
 
 type rabbitmqOptions struct {
 	addr     string
@@ -143,51 +158,51 @@ type rabbitmqOptions struct {
 }
 
 func WithConsumer(consumer string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).consumer = consumer
 	})
 }
 
 func WithTopic(topic string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).topic = topic
 	})
 }
 
 func WithRole(role string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).role = role
 	})
 }
 
 func WithExchange(name, kind string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).exchange = name
 		opt.(*rabbitmqOptions).exchType = kind
 	})
 }
 
 func WithQueueName(queue string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).queue = queue
 	})
 }
 
 func WithAddress(addr string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).addr = addr
 	})
 }
 
 func WithCredential(user, password string) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).username = user
 		opt.(*rabbitmqOptions).password = password
 	})
 }
 
 func WithDurable(durable bool) RabbitMQOption {
-	return netutil.OptionFunc(func(opt any) {
+	return util.OptionFunc(func(opt any) {
 		opt.(*rabbitmqOptions).durable = durable
 	})
 }
@@ -210,7 +225,7 @@ func initRabbitmqOptions(opts ...RabbitMQOption) *rabbitmqOptions {
 	if options.consumer == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
-			netutil.BUG(1, "os.Hostname: %v", err)
+			util.BUG(1, "os.Hostname: %v", err)
 		}
 		options.consumer = hostname
 	}
