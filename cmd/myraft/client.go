@@ -43,7 +43,7 @@ func (c *httpClient) Send(ctx context.Context, req *Request) (*Response, error) 
 	hreq.Header.Set("Content-Type", "application/json")
 
 	data, _ := gohttputil.DumpRequest(hreq, true)
-	logger.FromContext(ctx).Infof("Request(raw): `%s`\n", data)
+	logger.FromContext(ctx).Infof("Send request(raw): `%s`\n", data)
 
 	hres, err := c.Client.Do(hreq)
 	if err != nil {

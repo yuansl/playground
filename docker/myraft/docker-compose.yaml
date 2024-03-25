@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  myraft1:
+    image: myraft
+    command: >
+      myraft -addr myraft1:1234 -members 'http://myraft1:1234,http://myraft2:1234,http://myraft3:1234'
+    networks:
+      myraft:
+
+  myraft2:
+    image: myraft
+    command: >
+      myraft -addr myraft2:1234 -members 'http://myraft1:1234,http://myraft2:1234,http://myraft3:1234'
+    networks:
+      - myraft
+
+  myraft3:
+    image: myraft
+    command: >
+      myraft -addr myraft3:1234 -members 'http://myraft1:1234,http://myraft2:1234,http://myraft3:1234'
+    networks:
+      - myraft
+      
+      
+networks:
+  myraft:
+    driver: bridge

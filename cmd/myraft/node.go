@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"unsafe"
 )
 
 type Node struct {
@@ -19,6 +20,14 @@ func (node *Node) SendVoteRequest(ctx context.Context, req *VoteRequest) (*VoteR
 		return nil, err
 	}
 	return &VoteResponse{Accept: resp.Result.(map[string]any)["accept"].(bool)}, nil
+}
+
+func bytes2string(b []byte) string {
+	return unsafe.String(&b[0], len(b))
+}
+
+func string2bytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func (node *Node) SendHealthcheckRequest(ctx context.Context, from string, term int) (*AppendLogResponse, error) {
